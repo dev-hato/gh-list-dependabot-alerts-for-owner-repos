@@ -1,15 +1,12 @@
-name: release
+name: build-test
 on:
+  pull_request:
   push:
-    tags:
-      - "v*"
-permissions:
-  contents: write
-  id-token: write
-  attestations: write
-
+    branches:
+      - main
+permissions: { }
 jobs:
-  release:
+  build-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -17,7 +14,4 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: flatt-security/setup-takumi-guard-golang@2e3c7c40b538cd68b2ac483def12982ebc8bc02e # v1
-      - uses: cli/gh-extension-precompile@v2
-        with:
-          generate_attestations: true
-          go_version_file: go.mod
+      - run: gh extension install .
