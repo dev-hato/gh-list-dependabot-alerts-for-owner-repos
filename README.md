@@ -47,27 +47,27 @@ The results are printed to standard output as a JSON array like the following:
 
 ```json
 [
-	{
-		"number": 3,
-		"state": "open",
-		"dependency": {
-			"package": {
-				"ecosystem": "npm",
-				"name": "lodash"
-			},
-			"manifest_path": "package-lock.json",
-			"scope": "runtime"
-		},
-		"security_advisory": {
-			"summary": "Prototype Pollution in lodash",
-			"severity": "high"
-		},
-		"html_url": "https://github.com/octocat/Hello-World/security/dependabot/3",
-		"created_at": "2026-05-19T21:32:23Z",
-		"repository": {
-			"full_name": "octocat/Hello-World"
-		}
-	}
+  {
+    "number": 3,
+    "state": "open",
+    "dependency": {
+      "package": {
+        "ecosystem": "npm",
+        "name": "lodash"
+      },
+      "manifest_path": "package-lock.json",
+      "scope": "runtime"
+    },
+    "security_advisory": {
+      "summary": "Prototype Pollution in lodash",
+      "severity": "high"
+    },
+    "html_url": "https://github.com/octocat/Hello-World/security/dependabot/3",
+    "created_at": "2026-05-19T21:32:23Z",
+    "repository": {
+      "full_name": "octocat/Hello-World"
+    }
+  }
 ]
 ```
 
