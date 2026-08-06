@@ -1,6 +1,10 @@
 # gh-list-dependabot-alerts-for-owner-repos
 
+<!-- textlint-disable ja-technical-writing/ja-no-mixed-period -->
+
 [English](README.md) | 日本語
+
+<!-- textlint-enable ja-technical-writing/ja-no-mixed-period -->
 
 Dependabot alerts（Dependabotによる脆弱性アラート）の一覧を取得するGitHub CLI拡張機能です。
 Organizationやユーザーが所有する全リポジトリを対象とします。
