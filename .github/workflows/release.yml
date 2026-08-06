@@ -8,6 +8,7 @@ permissions:
   id-token: write
   attestations: write
 jobs:
+  # jscpd:ignore-start
   release:
     runs-on: ubuntu-latest
     steps:
@@ -18,6 +19,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      # jscpd:ignore-end
       - uses: flatt-security/setup-takumi-guard-golang@2e3c7c40b538cd68b2ac483def12982ebc8bc02e # v1
       - uses: cli/gh-extension-precompile@76961aa3bd1123d0a6fd42d0a41aca0696937c39 # v2.2.0
         with:

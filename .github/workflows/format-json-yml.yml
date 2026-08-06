@@ -14,6 +14,7 @@ permissions:
   contents: write
   pull-requests: write
 jobs:
+  # jscpd:ignore-start
   format-json-yml:
     runs-on: ubuntu-latest
     steps:
@@ -31,6 +32,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
           permission-workflows: write
+      # jscpd:ignore-end
       - uses: dev-hato/actions-format-json-yml@6fa1a14b2f9b42d954cd105dabc9f77c4fbce575 # v0.0.105
         with:
           github-token: ${{steps.generate_token.outputs.token}}

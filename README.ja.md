@@ -46,6 +46,7 @@ gh list-dependabot-alerts-for-owner-repos --username <ユーザー名>
 
 取得結果は、次のようなJSON配列として標準出力に出力されます。
 
+<!-- jscpd:ignore-start -->
 ```json
 [
   {
@@ -71,6 +72,7 @@ gh list-dependabot-alerts-for-owner-repos --username <ユーザー名>
   }
 ]
 ```
+<!-- jscpd:ignore-end -->
 
 ## 開発
 
