@@ -46,7 +46,7 @@ It follows the GitHub API `Link` response header across pages.
 It uses `github.RESTClient.RequestWithContext` directly.
 It skips the go-github client's built-in pagination.
 This lets raw JSON be decoded into whatever type `T` is needed per call site.
-`nextPathFromLink` parses the `Link` header with a regex to extract the `rel="next"` URL.
+`nextPathFromLink` parses the `Link` header with a regular expression to extract the `rel="next"` URL.
 When there's no next link, it returns the current path unchanged.
 `fetchAllPages` uses that as its loop-termination signal.
 
