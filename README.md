@@ -47,6 +47,7 @@ Specify either `--org` or `--username`. Running the command with both left empty
 The results are printed to standard output as a JSON array like the following:
 
 <!-- jscpd:ignore-start -->
+
 ```json
 [
   {
@@ -72,6 +73,7 @@ The results are printed to standard output as a JSON array like the following:
   }
 ]
 ```
+
 <!-- jscpd:ignore-end -->
 
 ## Development
