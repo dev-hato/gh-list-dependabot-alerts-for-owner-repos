@@ -37,7 +37,7 @@ Specify either `--org` or `--username`. Running the command with both left empty
 ### Options
 
 | Option       | Description              |
-|--------------|--------------------------|
+| ------------ | ------------------------ |
 | `--org`      | Target organization name |
 | `--username` | Target username          |
 
