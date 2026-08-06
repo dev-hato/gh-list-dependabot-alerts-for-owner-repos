@@ -1,16 +1,17 @@
 # gh-list-dependabot-alerts-for-owner-repos
 
-A GitHub CLI extension that lists Dependabot alerts (vulnerability alerts from Dependabot) for all repositories owned by an organization or a user.
+A GitHub CLI extension that lists Dependabot alerts (vulnerability alerts from Dependabot).
+It covers every repository owned by an organization or a user.
 
 ## What it does
 
-- With `--org`, it fetches the Dependabot alerts for every repository under the specified organization.
-- With `--username`, it fetches the Dependabot alerts for every repository owned by the specified user.
+- With `--org`: fetches alerts for every repository under the specified organization.
+- With `--username`: fetches alerts for every repository owned by the specified user.
 
 ## Requirements
 
 - The `gh` command must be installed and authenticated (e.g. via `gh auth login`).
-- You must be authenticated as an account with permission to view Dependabot alerts for the target organization/repositories.
+- You must be authenticated as an account with permission to view Dependabot alerts.
 
 ## Installation
 

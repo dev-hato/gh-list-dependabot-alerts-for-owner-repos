@@ -1,16 +1,17 @@
 # gh-list-dependabot-alerts-for-owner-repos
 
-Organizationやユーザーが所有する全リポジトリのDependabot alerts（Dependabotによる脆弱性アラート）の一覧取を得するGitHub CLI拡張機能です。
+Dependabot alerts（Dependabotによる脆弱性アラート）の一覧を取得するGitHub CLI拡張機能です。
+Organizationやユーザーが所有する全リポジトリを対象とします。
 
 ## できること
 
-- `--org`を指定すると、そのOrganization配下の全リポジトリのDependabot alertsをまとめて取得します。
-- `--username`を指定すると、そのユーザーが所有する全リポジトリのDependabot alertsを取得します。
+- `--org`を指定すると、そのOrganization配下の全リポジトリのalertsをまとめて取得する。
+- `--username`を指定すると、そのユーザーが所有する全リポジトリのalertsを取得する。
 
 ## 必要な環境
 
 - `gh`コマンドがインストール済みで、`gh auth login`などで認証済みであること。
-- 取得対象のOrganization・リポジトリのDependabot alertsを閲覧できる権限を持つアカウントで認証していること。
+- Dependabot alertsを閲覧できる権限を持つアカウントで認証していること。
 
 ## インストール
 
@@ -20,13 +21,13 @@ gh extension install dev-hato/gh-list-dependabot-alerts-for-owner-repos
 
 ## 使い方
 
-組織配下の全リポジトリのアラートを取得する場合：
+組織配下の全リポジトリのアラートを取得する場合は、次のコマンドを実行します。
 
 ```sh
 gh list-dependabot-alerts-for-owner-repos --org <組織名>
 ```
 
-ユーザーが所有する全リポジトリのアラートを取得する場合：
+ユーザーが所有する全リポジトリのアラートを取得する場合は、次のコマンドを実行します。
 
 ```sh
 gh list-dependabot-alerts-for-owner-repos --username <ユーザー名>
@@ -73,13 +74,13 @@ gh list-dependabot-alerts-for-owner-repos --username <ユーザー名>
 
 ## 開発
 
-最初に手元のコードを拡張機能としてインストールします：
+最初に手元のコードを拡張機能としてインストールします。
 
 ```sh
 gh extension install .
 ```
 
-その後、コードを変更して動作確認する際は都度、次のコマンドを実行します：
+その後、コードを変更して動作確認する際は都度、次のコマンドを実行します。
 
 ```sh
 go build && gh list-dependabot-alerts-for-owner-repos <引数>
