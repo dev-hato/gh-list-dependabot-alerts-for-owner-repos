@@ -32,13 +32,13 @@ func (b *Waiter) Wait() (time.Duration, error) {
 		return time.Duration(0), nil
 	}
 
-	maxSleep := backoffCap
+	maxWait := backoffCap
 
 	if b.attempt < backoffCapAttempt {
-		maxSleep = base << b.attempt
+		maxWait = base << b.attempt
 	}
 
-	n, err := rand.Int(rand.Reader, big.NewInt(maxSleep.Nanoseconds()+1))
+	n, err := rand.Int(rand.Reader, big.NewInt(maxWait.Nanoseconds()+1))
 	if err != nil {
 		return 0, errors.Wrap(err, "Failed to rand.Int")
 	}
