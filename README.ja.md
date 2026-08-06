@@ -1,16 +1,16 @@
 # gh-list-dependabot-alerts-for-owner-repos
 
-Organizationやユーザーが所有する全リポジトリの Dependabot alerts（Dependabot による脆弱性アラート）の一覧取を得する GitHub CLI 拡張機能です。
+Organizationやユーザーが所有する全リポジトリのDependabot alerts（Dependabotによる脆弱性アラート）の一覧取を得するGitHub CLI拡張機能です。
 
 ## できること
 
-- `--org` を指定すると、そのOrganization配下の全リポジトリの Dependabot alerts をまとめて取得します。
-- `--username` を指定すると、そのユーザーが所有する全リポジトリの Dependabot alerts を取得します。
+- `--org`を指定すると、そのOrganization配下の全リポジトリのDependabot alertsをまとめて取得します。
+- `--username`を指定すると、そのユーザーが所有する全リポジトリのDependabot alertsを取得します。
 
 ## 必要な環境
 
-- `gh` コマンドがインストール済みで、`gh auth login` などで認証済みであること。
-- 取得対象のOrganization・リポジトリの Dependabot alerts を閲覧できる権限を持つアカウントで認証していること。
+- `gh`コマンドがインストール済みで、`gh auth login`などで認証済みであること。
+- 取得対象のOrganization・リポジトリのDependabot alertsを閲覧できる権限を持つアカウントで認証していること。
 
 ## インストール
 
@@ -20,19 +20,19 @@ gh extension install dev-hato/gh-list-dependabot-alerts-for-owner-repos
 
 ## 使い方
 
-組織配下の全リポジトリのアラートを取得する場合:
+組織配下の全リポジトリのアラートを取得する場合：
 
 ```sh
 gh list-dependabot-alerts-for-owner-repos --org <組織名>
 ```
 
-ユーザーが所有する全リポジトリのアラートを取得する場合:
+ユーザーが所有する全リポジトリのアラートを取得する場合：
 
 ```sh
 gh list-dependabot-alerts-for-owner-repos --username <ユーザー名>
 ```
 
-`--org` と `--username` はどちらか一方を指定してください。両方とも空のまま実行するとエラーになります。
+`--org`と`--username`はどちらか一方を指定してください。両方とも空のまま実行するとエラーになります。
 
 ### オプション
 
@@ -43,7 +43,7 @@ gh list-dependabot-alerts-for-owner-repos --username <ユーザー名>
 
 ## 出力例
 
-取得結果は、以下のような JSON 配列として標準出力に出力されます。
+取得結果は、次のようなJSON配列として標準出力に出力されます。
 
 ```json
 [
@@ -73,13 +73,13 @@ gh list-dependabot-alerts-for-owner-repos --username <ユーザー名>
 
 ## 開発
 
-最初に手元のコードを拡張機能としてインストールします:
+最初に手元のコードを拡張機能としてインストールします：
 
 ```sh
 gh extension install .
 ```
 
-その後、コードを変更して動作確認する際は都度以下のコマンドを実行します:
+その後、コードを変更して動作確認する際は都度、次のコマンドを実行します：
 
 ```sh
 go build && gh list-dependabot-alerts-for-owner-repos <引数>
@@ -87,6 +87,6 @@ go build && gh list-dependabot-alerts-for-owner-repos <引数>
 
 ## 補足: 待機時間について
 
-実行中、標準エラー出力に `Call <path>` や `Wait <時間>` といったログが流れます。
-これは API を呼び出すごとにバックオフ処理によって短い待機を挟んでいるためです。
+実行中、標準エラー出力に`Call <path>`や`Wait <時間>`といったログが流れます。
+これはAPIを呼び出すごとにバックオフ処理によって短い待機を挟んでいるためです。
 対象リポジトリ数が多いほど、実行完了までに時間がかかります。
