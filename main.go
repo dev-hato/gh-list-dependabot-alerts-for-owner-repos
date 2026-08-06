@@ -29,15 +29,11 @@ func main() {
 		if err != nil {
 			fatal(errors.Wrap(err, "Failed to listAlertsForOrg"))
 		}
-
-		break
 	case *username != "":
 		smallAlerts, err = listAlertsForUser(ctx, client, *username)
 		if err != nil {
 			fatal(errors.Wrap(err, "Failed to listAlertsForUser"))
 		}
-
-		break
 	default:
 		fatal(errors.New("org and username are both empty"))
 	}
