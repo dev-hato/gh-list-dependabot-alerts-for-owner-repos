@@ -20,7 +20,10 @@ type Page[T any] struct {
 
 // waitBeforeCall sleeps for waiter's next backoff duration, logging it and honoring ctx cancellation while waiting.
 func waitBeforeCall(ctx context.Context) error {
-	wait := waiter.Wait()
+	wait, err := waiter.Wait()
+	if err != nil {
+		return errors.Wrap(err, "Failed to waiter.Wait")
+	}
 
 	if wait != time.Duration(0) {
 		if _, err := fmt.Fprintf(os.Stderr, "Wait %s\n", wait); err != nil {
@@ -40,11 +43,11 @@ func waitBeforeCall(ctx context.Context) error {
 func fetchPage[T any](ctx context.Context, client *api.RESTClient, path string) (p Page[T], err error) {
 	p.nextPath = path
 
-	if err := waitBeforeCall(ctx); err != nil {
+	if err = waitBeforeCall(ctx); err != nil {
 		return p, errors.Wrap(err, "Failed to waitBeforeCall")
 	}
 
-	if _, err := fmt.Fprintf(os.Stderr, "Call %s\n", path); err != nil {
+	if _, err = fmt.Fprintf(os.Stderr, "Call %s\n", path); err != nil {
 		return p, errors.Wrap(err, "Failed to fmt.Fprintf")
 	}
 

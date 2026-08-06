@@ -23,26 +23,31 @@ func main() {
 	ctx := context.Background()
 	var smallAlerts []SmallDependabotAlert
 
-	if *org != "" {
+	switch {
+	case *org != "":
 		smallAlerts, err = listAlertsForOrg(ctx, client, *org)
 		if err != nil {
 			fatal(errors.Wrap(err, "Failed to listAlertsForOrg"))
 		}
-	} else if *username != "" {
+
+		break
+	case *username != "":
 		smallAlerts, err = listAlertsForUser(ctx, client, *username)
 		if err != nil {
 			fatal(errors.Wrap(err, "Failed to listAlertsForUser"))
 		}
-	} else {
+
+		break
+	default:
 		fatal(errors.New("org and username are both empty"))
 	}
 
-	smallAlertsJsonBytes, err := json.MarshalIndent(smallAlerts, "", "\t")
+	smallAlertsJSONBytes, err := json.MarshalIndent(smallAlerts, "", "\t")
 	if err != nil {
 		fatal(errors.Wrap(err, "Failed to json.Marshal"))
 	}
 
-	fmt.Println(string(smallAlertsJsonBytes))
+	fmt.Println(string(smallAlertsJSONBytes))
 }
 
 // For more examples of using go-gh, see:
