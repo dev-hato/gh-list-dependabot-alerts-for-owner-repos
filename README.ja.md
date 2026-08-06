@@ -1,5 +1,7 @@
 # gh-list-dependabot-alerts-for-owner-repos
 
+[English](README.md) | 日本語
+
 Dependabot alerts（Dependabotによる脆弱性アラート）の一覧を取得するGitHub CLI拡張機能です。
 Organizationやユーザーが所有する全リポジトリを対象とします。
 

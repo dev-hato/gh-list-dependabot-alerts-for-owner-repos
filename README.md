@@ -1,5 +1,7 @@
 # gh-list-dependabot-alerts-for-owner-repos
 
+English | [日本語](README.ja.md)
+
 A GitHub CLI extension that lists Dependabot alerts (vulnerability alerts from Dependabot).
 It covers every repository owned by an organization or a user.
 
