@@ -22,9 +22,17 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Generate a token
+        id: generate_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.PROJECT_AUTOMATION_APP_CLIENT_ID }} # zizmor: ignore[secrets-outside-env]
+          private-key: ${{ secrets.PROJECT_AUTOMATION_PRIVATE_KEY }} # zizmor: ignore[secrets-outside-env]
+          permission-contents: write
+          permission-pull-requests: write
       - uses: dev-hato/actions-format-json-yml@6fa1a14b2f9b42d954cd105dabc9f77c4fbce575 # v0.0.105
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{steps.generate_token.outputs.token}}
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
