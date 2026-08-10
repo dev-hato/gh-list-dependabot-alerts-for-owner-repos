@@ -21,7 +21,7 @@ type SmallDependabotAlert struct {
 	Repository       *SmallRepository                 `json:"repository,omitempty"`
 }
 
-func toSmallDependabotAlert(alert github.DependabotAlert) SmallDependabotAlert {
+func toSmallDependabotAlert(alert github.DependabotAlert, repository *SmallRepository) SmallDependabotAlert {
 	var securityAdvisory *SmallDependabotSecurityAdvisory
 
 	if alert.SecurityAdvisory != nil {
@@ -38,5 +38,6 @@ func toSmallDependabotAlert(alert github.DependabotAlert) SmallDependabotAlert {
 		SecurityAdvisory: securityAdvisory,
 		HTMLURL:          alert.HTMLURL,
 		CreatedAt:        alert.CreatedAt,
+		Repository:       repository,
 	}
 }

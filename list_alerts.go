@@ -31,13 +31,13 @@ func listAlertsForOrg(ctx context.Context, client *api.RESTClient, org string) (
 	smallAlerts := make([]SmallDependabotAlert, len(alerts))
 
 	for i, alert := range alerts {
-		smallAlert := toSmallDependabotAlert(alert)
+		var repository *SmallRepository
 
 		if alert.Repository != nil {
-			smallAlert.Repository = &SmallRepository{FullName: alert.Repository.FullName}
+			repository = &SmallRepository{FullName: alert.Repository.FullName}
 		}
 
-		smallAlerts[i] = smallAlert
+		smallAlerts[i] = toSmallDependabotAlert(alert, repository)
 	}
 
 	return smallAlerts, nil
@@ -67,9 +67,7 @@ func fetchAlertsForRepo(ctx context.Context, client *api.RESTClient, ownerRepo s
 	smallAlerts := make([]SmallDependabotAlert, len(alerts))
 
 	for i, alert := range alerts {
-		smallAlert := toSmallDependabotAlert(alert)
-		smallAlert.Repository = &SmallRepository{FullName: &ownerRepo}
-		smallAlerts[i] = smallAlert
+		smallAlerts[i] = toSmallDependabotAlert(alert, &SmallRepository{FullName: &ownerRepo})
 	}
 
 	return smallAlerts, nil
