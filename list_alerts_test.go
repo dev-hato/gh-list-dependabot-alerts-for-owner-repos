@@ -145,7 +145,7 @@ func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
 	var closeOnce sync.Once
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, _ *http.Request) {
 		list := make([]map[string]any, 0, len(repos))
 		for _, name := range repos {
 			list = append(list, map[string]any{"name": name, "archived": false})
@@ -156,7 +156,7 @@ func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
 
 	for i, name := range repos {
 		number := i + 1
-		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, name), func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, name), func(w http.ResponseWriter, _ *http.Request) {
 			if arrived.Add(1) == int32(len(repos)) {
 				closeOnce.Do(func() { close(allArrived) })
 			}
@@ -196,7 +196,7 @@ func TestListAlertsForUserPropagatesRepoError(t *testing.T) {
 	repos := []string{"ok-repo", "broken-repo"}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, w, []map[string]any{
 			{"name": repos[0], "archived": false},
 			{"name": repos[1], "archived": false},
