@@ -20,7 +20,7 @@ type Page[T any] struct {
 func fetchPage[T any](ctx context.Context, client *api.RESTClient, path string) (p Page[T], err error) {
 	p.nextPath = path
 
-	if err := limiter.Wait(ctx); err != nil {
+	if err = limiter.Wait(ctx); err != nil {
 		return p, errors.Wrap(err, "Failed to limiter.Wait")
 	}
 

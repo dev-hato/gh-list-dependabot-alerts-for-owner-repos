@@ -83,18 +83,18 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 	repos := []string{"slow-repo", "fast-repo"}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, w, []map[string]any{
 			{"name": repos[0], "archived": false},
 			{"name": repos[1], "archived": false},
 		})
 	})
-	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[0]), func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[0]), func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(50 * time.Millisecond)
 		number := 1
 		writeJSON(t, w, []map[string]any{{"number": number}})
 	})
-	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[1]), func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[1]), func(w http.ResponseWriter, _ *http.Request) {
 		number := 2
 		writeJSON(t, w, []map[string]any{{"number": number}})
 	})
