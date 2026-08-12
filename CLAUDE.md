@@ -36,6 +36,10 @@ It's JSON-marshaled and printed to stdout.
 - **User path** (`list_alerts.go`, `listAlertsForUser`): no org-wide endpoint exists for user repos.
   So this lists the user's repos (`users/{username}/repos`) and skips archived repos.
   Then it calls `fetchAlertsForRepo` per repository (`repos/{owner}/{repo}/dependabot/alerts`).
+  These calls run in parallel across repositories via `golang.org/x/sync/errgroup`.
+  Results are written into an index-aligned slice, one slot per repository.
+  So output order matches repository order, regardless of which fetch finishes first.
+  The shared rate limiter (see below) keeps the combined request rate in check across goroutines.
   A 403 with "Dependabot alerts are disabled" is treated as "no alerts" (returns `nil, nil`).
   This is because it's an expected state for many repos, not a failure.
 
@@ -50,11 +54,16 @@ This lets raw JSON be decoded into whatever type `T` is needed per call site.
 When there's no next link, it returns the current path unchanged.
 `fetchAllPages` uses that as its loop-termination signal.
 
-**Rate limiting** (`waiter.go`): a package-level `Waiter` implements exponential backoff.
-It uses the AWS-style "Full Jitter" algorithm and increments `attempt` on every call.
-It is invoked before every single HTTP request in `fetchPage` (`pagination.go`).
-So wait times grow across the entire run, not per-endpoint.
-`Call <path>` and `Wait <duration>` progress lines are logged to stderr.
+**Rate limiting** (`rate_limiter.go`): a package-level `limiter` throttles outgoing requests.
+It's a `golang.org/x/time/rate.Limiter`, built via `rate.NewLimiter(5, 1)`.
+That's 5 requests per second, with a burst size of one.
+`fetchPage` (`pagination.go`) calls `limiter.Wait(ctx)` before every single HTTP request.
+That blocks until the limiter admits the request.
+`rate.Limiter` is safe for concurrent use.
+This matters because `listAlertsForUser` fetches repositories in parallel.
+The previous hand-rolled `Waiter` raced under that usage.
+It used exponential backoff with an unsynchronized `attempt` counter.
+A `Call <path>` progress line is still logged to stderr before each request.
 This is expected/normal output, not an error.
 It is documented in the readme for users who see the run appear to hang.
 

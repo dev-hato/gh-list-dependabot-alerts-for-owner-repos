@@ -9,6 +9,7 @@ import (
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cockroachdb/errors"
 	"github.com/google/go-github/v89/github"
+	"golang.org/x/sync/errgroup"
 )
 
 // openAlertsURL builds a "state=open" filtered request path for a Dependabot alerts endpoint.
@@ -73,24 +74,51 @@ func fetchAlertsForRepo(ctx context.Context, client *api.RESTClient, ownerRepo s
 	return smallAlerts, nil
 }
 
+// listAlertsForUser fetches alerts for every non-archived repository of username,
+// one repository at a time but in parallel across repositories.
+// The shared rate limiter (limiter.Wait in pagination.go's fetchPage) keeps the combined request rate in check,
+// so parallelizing here doesn't burst requests against GitHub.
 func listAlertsForUser(ctx context.Context, client *api.RESTClient, username string) ([]SmallDependabotAlert, error) {
 	repositories, err := fetchAllPages[github.Repository](ctx, client, fmt.Sprintf("users/%s/repos", username))
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to fetchAllPages")
 	}
 
-	var smallAlerts []SmallDependabotAlert
+	targetRepoNames := make([]string, 0, len(repositories))
 
 	for _, repository := range repositories {
 		if (repository.Archived != nil && *repository.Archived) || repository.Name == nil {
 			continue
 		}
 
-		repoSmallAlerts, err := fetchAlertsForRepo(ctx, client, fmt.Sprintf("%s/%s", username, *repository.Name))
-		if err != nil {
-			return nil, errors.Wrap(err, "Failed to fetchAlertsForRepo")
-		}
+		targetRepoNames = append(targetRepoNames, *repository.Name)
+	}
 
+	// Each goroutine writes to its own index,
+	// so results keep repository order regardless of which fetch finishes first.
+	perRepoAlerts := make([][]SmallDependabotAlert, len(targetRepoNames))
+
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	for i, name := range targetRepoNames {
+		eg.Go(func() error {
+			repoSmallAlerts, err := fetchAlertsForRepo(egCtx, client, fmt.Sprintf("%s/%s", username, name))
+			if err != nil {
+				return errors.Wrap(err, "Failed to fetchAlertsForRepo")
+			}
+
+			perRepoAlerts[i] = repoSmallAlerts
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return nil, errors.Wrap(err, "Failed to Wait")
+	}
+
+	var smallAlerts []SmallDependabotAlert
+
+	for _, repoSmallAlerts := range perRepoAlerts {
 		smallAlerts = append(smallAlerts, repoSmallAlerts...)
 	}
 

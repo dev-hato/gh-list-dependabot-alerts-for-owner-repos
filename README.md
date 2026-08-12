@@ -94,6 +94,8 @@ go build && gh list-dependabot-alerts-for-owner-repos <args>
 
 ## Note: about the wait times
 
-During execution, log lines like `Call <path>` and `Wait <duration>` are printed to standard error.
-These appear because a short wait is inserted before each API call as part of the backoff handling.
+During execution, log lines like `Call <path>` are printed to standard error before each API call.
+A short wait may be inserted beforehand to keep the request rate steady.
+When using `--username`, alerts for each repository are fetched in parallel.
+All requests still share the same rate limit.
 The more target repositories there are, the longer the run takes to complete.

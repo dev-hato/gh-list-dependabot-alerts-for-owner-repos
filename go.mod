@@ -6,6 +6,8 @@ require (
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/cockroachdb/errors v1.14.0
 	github.com/google/go-github/v89 v89.0.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/time v0.15.0
 )
 
 require (

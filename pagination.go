@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cockroachdb/errors"
@@ -18,33 +17,11 @@ type Page[T any] struct {
 	nextPath string
 }
 
-// waitBeforeCall sleeps for waiter's next backoff duration, logging it and honoring ctx cancellation while waiting.
-func waitBeforeCall(ctx context.Context) error {
-	wait, err := waiter.Wait()
-	if err != nil {
-		return errors.Wrap(err, "Failed to waiter.Wait")
-	}
-
-	if wait != time.Duration(0) {
-		if _, err := fmt.Fprintf(os.Stderr, "Wait %s\n", wait); err != nil {
-			return errors.Wrap(err, "Failed to fmt.Fprintf")
-		}
-	}
-
-	select {
-	case <-ctx.Done():
-		return errors.Wrap(ctx.Err(), "Context done while backing off")
-	case <-time.After(wait):
-	}
-
-	return nil
-}
-
 func fetchPage[T any](ctx context.Context, client *api.RESTClient, path string) (p Page[T], err error) {
 	p.nextPath = path
 
-	if err = waitBeforeCall(ctx); err != nil {
-		return p, errors.Wrap(err, "Failed to waitBeforeCall")
+	if err := limiter.Wait(ctx); err != nil {
+		return p, errors.Wrap(err, "Failed to limiter.Wait")
 	}
 
 	if _, err = fmt.Fprintf(os.Stderr, "Call %s\n", path); err != nil {
