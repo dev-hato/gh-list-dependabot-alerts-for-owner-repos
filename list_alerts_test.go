@@ -70,6 +70,35 @@ func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
 	}
 }
 
+// registerRepoListHandler registers the "list user's repos" endpoint on mux,
+// returning repos as a single page of non-archived repositories.
+func registerRepoListHandler(t *testing.T, mux *http.ServeMux, username string, repos []string) {
+	t.Helper()
+
+	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, _ *http.Request) {
+		list := make([]map[string]any, 0, len(repos))
+
+		for _, name := range repos {
+			list = append(list, map[string]any{"name": name, "archived": false})
+		}
+
+		writeJSON(t, w, list)
+	})
+}
+
+// listAlertsForTestUser starts an httptest.Server for mux,
+// builds a REST client against it, and calls listAlertsForUser for username.
+// The server is closed automatically via t.Cleanup.
+func listAlertsForTestUser(t *testing.T, mux *http.ServeMux, username string) ([]SmallDependabotAlert, error) {
+	t.Helper()
+
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	client := newTestRESTClient(t, server)
+	return listAlertsForUser(context.Background(), client, username)
+}
+
 // TestListAlertsForUserPreservesRepositoryOrder fetches alerts for repos in parallel,
 // with the first repo's response deliberately delayed.
 // If the per-repo results were merged as responses arrive (e.g. via a shared slice guarded only by a mutex),
@@ -83,12 +112,7 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 	repos := []string{"slow-repo", "fast-repo"}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(t, w, []map[string]any{
-			{"name": repos[0], "archived": false},
-			{"name": repos[1], "archived": false},
-		})
-	})
+	registerRepoListHandler(t, mux, username, repos)
 	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[0]), func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(50 * time.Millisecond)
 		number := 1
@@ -99,12 +123,7 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 		writeJSON(t, w, []map[string]any{{"number": number}})
 	})
 
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	client := newTestRESTClient(t, server)
-
-	alerts, err := listAlertsForUser(context.Background(), client, username)
+	alerts, err := listAlertsForTestUser(t, mux, username)
 	if err != nil {
 		t.Fatalf("listAlertsForUser() error = %v", err)
 	}
@@ -145,14 +164,7 @@ func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
 	var closeOnce sync.Once
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, _ *http.Request) {
-		list := make([]map[string]any, 0, len(repos))
-		for _, name := range repos {
-			list = append(list, map[string]any{"name": name, "archived": false})
-		}
-
-		writeJSON(t, w, list)
-	})
+	registerRepoListHandler(t, mux, username, repos)
 
 	for i, name := range repos {
 		number := i + 1
@@ -171,12 +183,7 @@ func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
 		})
 	}
 
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	client := newTestRESTClient(t, server)
-
-	alerts, err := listAlertsForUser(context.Background(), client, username)
+	alerts, err := listAlertsForTestUser(t, mux, username)
 	if err != nil {
 		t.Fatalf("listAlertsForUser() error = %v", err)
 	}
@@ -196,12 +203,7 @@ func TestListAlertsForUserPropagatesRepoError(t *testing.T) {
 	repos := []string{"ok-repo", "broken-repo"}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(t, w, []map[string]any{
-			{"name": repos[0], "archived": false},
-			{"name": repos[1], "archived": false},
-		})
-	})
+	registerRepoListHandler(t, mux, username, repos)
 	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[0]), func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, w, []map[string]any{{"number": 1}})
 	})
@@ -210,12 +212,7 @@ func TestListAlertsForUserPropagatesRepoError(t *testing.T) {
 		writeJSON(t, w, map[string]any{"message": "boom"})
 	})
 
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	client := newTestRESTClient(t, server)
-
-	_, err := listAlertsForUser(context.Background(), client, username)
+	_, err := listAlertsForTestUser(t, mux, username)
 	if err == nil {
 		t.Fatal("listAlertsForUser() error = nil, want error")
 	}
