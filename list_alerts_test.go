@@ -86,11 +86,24 @@ func registerRepoListHandler(t *testing.T, mux *http.ServeMux, username string, 
 	})
 }
 
-// listAlertsForTestUser starts an httptest.Server for mux,
-// builds a REST client against it, and calls listAlertsForUser for username.
+// repoAlertsHandler pairs a repository name with the handler serving its dependabot alerts endpoint.
+type repoAlertsHandler struct {
+	repo    string
+	handler http.HandlerFunc
+}
+
+// callListAlertsForUser builds an httptest.Server whose mux has the "list user's repos" endpoint registered for repos,
+// plus one dependabot-alerts handler per entry in handlers, then calls listAlertsForUser against it.
 // The server is closed automatically via t.Cleanup.
-func listAlertsForTestUser(t *testing.T, mux *http.ServeMux, username string) ([]SmallDependabotAlert, error) {
+func callListAlertsForUser(t *testing.T, username string, repos []string, handlers []repoAlertsHandler) ([]SmallDependabotAlert, error) {
 	t.Helper()
+
+	mux := http.NewServeMux()
+	registerRepoListHandler(t, mux, username, repos)
+
+	for _, h := range handlers {
+		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, h.repo), h.handler)
+	}
 
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
@@ -111,19 +124,15 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 
 	repos := []string{"slow-repo", "fast-repo"}
 
-	mux := http.NewServeMux()
-	registerRepoListHandler(t, mux, username, repos)
-	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[0]), func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(50 * time.Millisecond)
-		number := 1
-		writeJSON(t, w, []map[string]any{{"number": number}})
+	alerts, err := callListAlertsForUser(t, username, repos, []repoAlertsHandler{
+		{repos[0], func(w http.ResponseWriter, _ *http.Request) {
+			time.Sleep(50 * time.Millisecond)
+			writeJSON(t, w, []map[string]any{{"number": 1}})
+		}},
+		{repos[1], func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(t, w, []map[string]any{{"number": 2}})
+		}},
 	})
-	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[1]), func(w http.ResponseWriter, _ *http.Request) {
-		number := 2
-		writeJSON(t, w, []map[string]any{{"number": number}})
-	})
-
-	alerts, err := listAlertsForTestUser(t, mux, username)
 	if err != nil {
 		t.Fatalf("listAlertsForUser() error = %v", err)
 	}
@@ -163,12 +172,11 @@ func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
 
 	var closeOnce sync.Once
 
-	mux := http.NewServeMux()
-	registerRepoListHandler(t, mux, username, repos)
+	handlers := make([]repoAlertsHandler, len(repos))
 
 	for i, name := range repos {
 		number := i + 1
-		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, name), func(w http.ResponseWriter, _ *http.Request) {
+		handlers[i] = repoAlertsHandler{name, func(w http.ResponseWriter, _ *http.Request) {
 			if arrived.Add(1) == int32(len(repos)) {
 				closeOnce.Do(func() { close(allArrived) })
 			}
@@ -180,10 +188,10 @@ func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
 			}
 
 			writeJSON(t, w, []map[string]any{{"number": number}})
-		})
+		}}
 	}
 
-	alerts, err := listAlertsForTestUser(t, mux, username)
+	alerts, err := callListAlertsForUser(t, username, repos, handlers)
 	if err != nil {
 		t.Fatalf("listAlertsForUser() error = %v", err)
 	}
@@ -202,17 +210,15 @@ func TestListAlertsForUserPropagatesRepoError(t *testing.T) {
 
 	repos := []string{"ok-repo", "broken-repo"}
 
-	mux := http.NewServeMux()
-	registerRepoListHandler(t, mux, username, repos)
-	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[0]), func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(t, w, []map[string]any{{"number": 1}})
+	_, err := callListAlertsForUser(t, username, repos, []repoAlertsHandler{
+		{repos[0], func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(t, w, []map[string]any{{"number": 1}})
+		}},
+		{repos[1], func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			writeJSON(t, w, map[string]any{"message": "boom"})
+		}},
 	})
-	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[1]), func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(t, w, map[string]any{"message": "boom"})
-	})
-
-	_, err := listAlertsForTestUser(t, mux, username)
 	if err == nil {
 		t.Fatal("listAlertsForUser() error = nil, want error")
 	}
