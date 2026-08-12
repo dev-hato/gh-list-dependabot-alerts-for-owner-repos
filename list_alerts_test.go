@@ -202,10 +202,10 @@ func TestListAlertsForUserPropagatesRepoError(t *testing.T) {
 			{"name": repos[1], "archived": false},
 		})
 	})
-	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[0]), func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[0]), func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, w, []map[string]any{{"number": 1}})
 	})
-	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[1]), func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, repos[1]), func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		writeJSON(t, w, map[string]any{"message": "boom"})
 	})
