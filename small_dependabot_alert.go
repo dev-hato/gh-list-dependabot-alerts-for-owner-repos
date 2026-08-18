@@ -1,6 +1,6 @@
 package main
 
-import "github.com/google/go-github/v89/github"
+import "github.com/google/go-github/v90/github"
 
 type SmallDependabotSecurityAdvisory struct {
 	Summary  *string `json:"summary,omitempty"`
