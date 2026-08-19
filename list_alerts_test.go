@@ -5,60 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/cli/go-gh/v2/pkg/api"
 )
-
-// rewriteTransport redirects every request to target, keeping path and query,
-// so a *api.RESTClient built with a fake Host still hits an httptest.Server.
-type rewriteTransport struct {
-	target *url.URL
-}
-
-func (t rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = req.Clone(req.Context())
-	req.URL.Scheme = t.target.Scheme
-	req.URL.Host = t.target.Host
-
-	return http.DefaultTransport.RoundTrip(req)
-}
-
-func newTestRESTClient(t *testing.T, server *httptest.Server) *api.RESTClient {
-	t.Helper()
-
-	target, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatalf("url.Parse() error = %v", err)
-	}
-
-	client, err := api.NewRESTClient(api.ClientOptions{
-		Host:      "github.com",
-		AuthToken: "test-token",
-		Transport: rewriteTransport{target: target},
-	})
-	if err != nil {
-		t.Fatalf("api.NewRESTClient() error = %v", err)
-	}
-
-	return client
-}
-
-// resetLimiter clears the package-level rate limiter's accumulated token state.
-// It's shared across every test in this package, so without a reset,
-// tokens spent by earlier tests would carry over and make later tests wait on the limiter
-// for no reason related to what's being tested.
-func resetLimiter(t *testing.T) {
-	t.Helper()
-
-	limiter = newLimiter()
-}
 
 func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
 	t.Helper()
@@ -105,10 +57,7 @@ func callListAlertsForUser(t *testing.T, username string, repos []string, handle
 		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, h.repo), h.handler)
 	}
 
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-
-	client := newTestRESTClient(t, server)
+	client := newTestGithubClient(t, mux)
 	return listAlertsForUser(context.Background(), client, username)
 }
 
@@ -118,8 +67,6 @@ func callListAlertsForUser(t *testing.T, username string, repos []string, handle
 // the faster second repo's alerts would land first.
 // Output order must instead always follow repository order, matching the pre-parallelization behavior.
 func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
-	resetLimiter(t)
-
 	const username = "octocat"
 
 	repos := []string{"slow-repo", "fast-repo"}
@@ -160,8 +107,6 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 // but a sequential caller can't start repo-b's request until repo-a's finishes: deadlock,
 // caught below as a timeout instead of a hang.
 func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
-	resetLimiter(t)
-
 	const username = "octocat"
 
 	repos := []string{"repo-a", "repo-b", "repo-c"}
@@ -204,8 +149,6 @@ func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
 // TestListAlertsForUserPropagatesRepoError ensures a failure fetching one repository's alerts
 // still surfaces as an error from listAlertsForUser.
 func TestListAlertsForUserPropagatesRepoError(t *testing.T) {
-	resetLimiter(t)
-
 	const username = "octocat"
 
 	repos := []string{"ok-repo", "broken-repo"}
@@ -226,4 +169,282 @@ func TestListAlertsForUserPropagatesRepoError(t *testing.T) {
 	if !strings.Contains(err.Error(), "fetchAlertsForRepo") {
 		t.Errorf("error = %v, want wrapped fetchAlertsForRepo error", err)
 	}
+}
+
+func TestOpenAlertsURL(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		path string
+		want string
+	}{
+		"org path": {
+			path: "orgs/foo/dependabot/alerts",
+			want: "orgs/foo/dependabot/alerts?state=open",
+		},
+		"repo path": {
+			path: "repos/foo/bar/dependabot/alerts",
+			want: "repos/foo/bar/dependabot/alerts?state=open",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := openAlertsURL(tt.path); got != tt.want {
+				t.Errorf("openAlertsURL(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestListAlertsForOrg(t *testing.T) {
+	t.Run("success attaches the alert's own repository", func(t *testing.T) {
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/orgs/foo/dependabot/alerts" {
+				t.Errorf("path = %q, want /orgs/foo/dependabot/alerts", r.URL.Path)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if _, err := fmt.Fprint(w, `[
+				{"number":1,"state":"open","repository":{"full_name":"foo/bar"}},
+				{"number":2,"state":"open"}
+			]`); err != nil {
+				t.Error(err)
+			}
+		}))
+
+		alerts, err := listAlertsForOrg(context.Background(), client, "foo")
+		if err != nil {
+			t.Fatalf("listAlertsForOrg() error = %v, want nil", err)
+		}
+
+		if len(alerts) != 2 {
+			t.Fatalf("len(alerts) = %d, want 2", len(alerts))
+		}
+
+		if alerts[0].Repository == nil || *alerts[0].Repository.FullName != "foo/bar" {
+			t.Errorf("alerts[0].Repository = %+v, want foo/bar", alerts[0].Repository)
+		}
+
+		if alerts[1].Repository != nil {
+			t.Errorf("alerts[1].Repository = %+v, want nil (alert had no repository)", alerts[1].Repository)
+		}
+	})
+
+	t.Run("error from fetchAllPages is wrapped", func(t *testing.T) {
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+
+			if _, err := fmt.Fprint(w, `{"message":"boom"}`); err != nil {
+				t.Error(err)
+			}
+		}))
+
+		_, err := listAlertsForOrg(context.Background(), client, "foo")
+		if err == nil || !strings.Contains(err.Error(), "Failed to fetchAllPages") {
+			t.Errorf("listAlertsForOrg() error = %v, want it to mention fetchAllPages", err)
+		}
+	})
+}
+
+func TestFetchAlertsForRepo(t *testing.T) {
+	tests := map[string]struct {
+		handler         func(t *testing.T) http.HandlerFunc
+		wantErr         bool
+		wantErrContains string
+		wantAlertsNil   bool
+		checkAlerts     func(t *testing.T, alerts []SmallDependabotAlert)
+	}{
+		"success backfills the repository from ownerRepo": {
+			handler: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path != "/repos/foo/bar/dependabot/alerts" {
+						t.Errorf("path = %q, want /repos/foo/bar/dependabot/alerts", r.URL.Path)
+					}
+
+					w.Header().Set("Content-Type", "application/json")
+
+					if _, err := fmt.Fprint(w, `[{"number":1,"state":"open"}]`); err != nil {
+						t.Error(err)
+					}
+				}
+			},
+			checkAlerts: func(t *testing.T, alerts []SmallDependabotAlert) {
+				if len(alerts) != 1 {
+					t.Fatalf("len(alerts) = %d, want 1", len(alerts))
+				}
+
+				if alerts[0].Repository == nil || *alerts[0].Repository.FullName != "foo/bar" {
+					t.Errorf("alerts[0].Repository = %+v, want foo/bar", alerts[0].Repository)
+				}
+			},
+		},
+		"403 disabled-alerts message returns nil, nil": {
+			handler: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+
+					if _, err := fmt.Fprint(w, `{"message":"Dependabot alerts are disabled for this repository."}`); err != nil {
+						t.Error(err)
+					}
+				}
+			},
+			wantAlertsNil: true,
+		},
+		"403 with a different message is an error": {
+			handler: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+
+					if _, err := fmt.Fprint(w, `{"message":"You are forbidden."}`); err != nil {
+						t.Error(err)
+					}
+				}
+			},
+			wantErr:       true,
+			wantAlertsNil: true,
+		},
+		"404 is an error, not treated as disabled alerts": {
+			handler: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusNotFound)
+
+					if _, err := fmt.Fprint(w, `{"message":"Not Found"}`); err != nil {
+						t.Error(err)
+					}
+				}
+			},
+			wantErr:         true,
+			wantErrContains: "Failed to fetchAllPages",
+		},
+		"non-HTTP error is wrapped": {
+			handler: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+
+					if _, err := fmt.Fprint(w, `not json`); err != nil {
+						t.Error(err)
+					}
+				}
+			},
+			wantErr:         true,
+			wantErrContains: "Failed to fetchAllPages",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			client := newTestGithubClient(t, tt.handler(t))
+
+			alerts, err := fetchAlertsForRepo(context.Background(), client, "foo/bar")
+
+			switch {
+			case !tt.wantErr && err != nil:
+				t.Fatalf("fetchAlertsForRepo() error = %v, want nil", err)
+			case tt.wantErr && err == nil:
+				t.Fatal("fetchAlertsForRepo() error = nil, want non-nil")
+			case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
+				t.Errorf("fetchAlertsForRepo() error = %v, want it to mention %q", err, tt.wantErrContains)
+			}
+
+			if tt.wantAlertsNil && alerts != nil {
+				t.Errorf("fetchAlertsForRepo() alerts = %v, want nil", alerts)
+			}
+
+			if tt.checkAlerts != nil {
+				tt.checkAlerts(t, alerts)
+			}
+		})
+	}
+}
+
+func TestListAlertsForUser(t *testing.T) {
+	t.Run("skips archived and nameless repos, aggregates the rest", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+
+			if _, err := fmt.Fprint(w, `[
+				{"name":"active","archived":false},
+				{"name":"old","archived":true},
+				{"archived":false}
+			]`); err != nil {
+				t.Error(err)
+			}
+		})
+		mux.HandleFunc("/repos/alice/active/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+
+			if _, err := fmt.Fprint(w, `[{"number":9}]`); err != nil {
+				t.Error(err)
+			}
+		})
+		mux.HandleFunc("/repos/alice/old/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
+			t.Error("an archived repository should not be queried for alerts")
+		})
+
+		client := newTestGithubClient(t, mux)
+
+		alerts, err := listAlertsForUser(context.Background(), client, "alice")
+		if err != nil {
+			t.Fatalf("listAlertsForUser() error = %v, want nil", err)
+		}
+
+		if len(alerts) != 1 || alerts[0].Number == nil || *alerts[0].Number != 9 {
+			t.Fatalf("alerts = %+v, want a single alert numbered 9", alerts)
+		}
+
+		if alerts[0].Repository == nil || *alerts[0].Repository.FullName != "alice/active" {
+			t.Errorf("alerts[0].Repository = %+v, want alice/active", alerts[0].Repository)
+		}
+	})
+
+	t.Run("error listing repos is wrapped", func(t *testing.T) {
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+
+			if _, err := fmt.Fprint(w, `{"message":"boom"}`); err != nil {
+				t.Error(err)
+			}
+		}))
+
+		_, err := listAlertsForUser(context.Background(), client, "alice")
+		if err == nil || !strings.Contains(err.Error(), "Failed to fetchAllPages") {
+			t.Errorf("listAlertsForUser() error = %v, want it to mention fetchAllPages", err)
+		}
+	})
+
+	t.Run("error fetching a repo's alerts is wrapped", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+
+			if _, err := fmt.Fprint(w, `[{"name":"broken","archived":false}]`); err != nil {
+				t.Error(err)
+			}
+		})
+		mux.HandleFunc("/repos/alice/broken/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+
+			if _, err := fmt.Fprint(w, `{"message":"boom"}`); err != nil {
+				t.Error(err)
+			}
+		})
+
+		client := newTestGithubClient(t, mux)
+
+		_, err := listAlertsForUser(context.Background(), client, "alice")
+		if err == nil || !strings.Contains(err.Error(), "Failed to fetchAlertsForRepo") {
+			t.Errorf("listAlertsForUser() error = %v, want it to mention fetchAlertsForRepo", err)
+		}
+	})
 }
