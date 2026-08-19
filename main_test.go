@@ -66,8 +66,8 @@ func TestRun(t *testing.T) {
 		"neither flag set is an error": {
 			args: nil,
 			newClient: func(t *testing.T) (*githubClient, error) {
-				// client is never used on this path, since the default case returns before touching it.
-				return &githubClient{limiter: noWaitLimiter()}, nil
+				t.Fatal("newClient should not be called")
+				return nil, nil
 			},
 			wantErr:         true,
 			wantErrContains: "org and username are both empty",

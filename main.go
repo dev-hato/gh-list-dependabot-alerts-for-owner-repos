@@ -33,6 +33,10 @@ func run(ctx context.Context, args []string, out io.Writer, newClient func() (*g
 		return errors.Wrap(err, "Failed to fs.Parse")
 	}
 
+	if *org == "" && *username == "" {
+		return errors.New("org and username are both empty")
+	}
+
 	client, err := newClient()
 	if err != nil {
 		return errors.Wrap(err, "Failed to newClient")
@@ -46,13 +50,11 @@ func run(ctx context.Context, args []string, out io.Writer, newClient func() (*g
 		if err != nil {
 			return errors.Wrap(err, "Failed to listAlertsForOrg")
 		}
-	case *username != "":
+	default:
 		smallAlerts, err = listAlertsForUser(ctx, client, *username)
 		if err != nil {
 			return errors.Wrap(err, "Failed to listAlertsForUser")
 		}
-	default:
-		return errors.New("org and username are both empty")
 	}
 
 	smallAlertsJSONBytes, err := json.MarshalIndent(smallAlerts, "", "\t")
