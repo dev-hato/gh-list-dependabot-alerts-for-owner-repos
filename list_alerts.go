@@ -8,7 +8,7 @@ import (
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cockroachdb/errors"
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 	"golang.org/x/sync/errgroup"
 )
 
