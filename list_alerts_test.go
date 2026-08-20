@@ -28,10 +28,10 @@ func registerRepoListHandler(t *testing.T, mux *http.ServeMux, username string, 
 	t.Helper()
 
 	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, _ *http.Request) {
-		list := make([]map[string]any, 0, len(repos))
+		list := make([]map[string]any, len(repos))
 
-		for _, name := range repos {
-			list = append(list, map[string]any{"name": name, "archived": false})
+		for i, name := range repos {
+			list[i] = map[string]any{"name": name, "archived": false}
 		}
 
 		writeJSON(t, w, list)
