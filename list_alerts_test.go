@@ -409,11 +409,11 @@ func TestListAlertsForUser(t *testing.T) {
 
 	t.Run("error fetching a repo's alerts is wrapped", func(t *testing.T) {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			mustFprint(t, w, `[{"name":"broken","archived":false}]`)
 		})
-		mux.HandleFunc("/repos/alice/broken/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/repos/alice/broken/dependabot/alerts", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			mustFprint(t, w, `{"message":"boom"}`)

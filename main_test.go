@@ -106,7 +106,7 @@ func TestRun(t *testing.T) {
 		"listAlertsForOrg error is wrapped": {
 			args: []string{"--org", "foo"},
 			newClient: func(t *testing.T) (*githubClient, error) {
-				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusInternalServerError)
 					mustFprint(t, w, `{"message":"boom"}`)
