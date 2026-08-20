@@ -67,7 +67,7 @@ func TestFetchPage(t *testing.T) {
 	tests := map[string]fetchPageTestCase{
 		"success without a next link": {
 			newClient: func(t *testing.T) *githubClient {
-				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					mustWrite(t, w, []byte(`[{"number":1},{"number":2}]`))
 				}))
@@ -84,7 +84,7 @@ func TestFetchPage(t *testing.T) {
 		},
 		"success with a next link": {
 			newClient: func(t *testing.T) *githubClient {
-				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.Header().Set("Link", `<https://api.github.com/orgs/foo/dependabot/alerts?page=2>; rel="next"`)
 					mustWrite(t, w, []byte(`[{"number":1}]`))
@@ -98,7 +98,7 @@ func TestFetchPage(t *testing.T) {
 		},
 		"HTTP error is wrapped": {
 			newClient: func(t *testing.T) *githubClient {
-				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusInternalServerError)
 					mustWrite(t, w, []byte(`{"message":"boom"}`))
