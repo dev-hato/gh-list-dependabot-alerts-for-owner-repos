@@ -49,7 +49,7 @@ func TestRun(t *testing.T) {
 		"--org fetches org alerts and prints them as JSON": {
 			args: []string{"--org", "foo"},
 			newClient: func(t *testing.T) (*githubClient, error) {
-				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					mustFprint(t, w, `[{"number":1,"state":"open"}]`)
 				}))
@@ -62,11 +62,11 @@ func TestRun(t *testing.T) {
 			args: []string{"--username", "alice"},
 			newClient: func(t *testing.T) (*githubClient, error) {
 				mux := http.NewServeMux()
-				mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, r *http.Request) {
+				mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					mustFprint(t, w, `[{"name":"repo","archived":false}]`)
 				})
-				mux.HandleFunc("/repos/alice/repo/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
+				mux.HandleFunc("/repos/alice/repo/dependabot/alerts", func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					mustFprint(t, w, `[{"number":7,"state":"open"}]`)
 				})
