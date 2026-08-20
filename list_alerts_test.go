@@ -251,14 +251,40 @@ func TestListAlertsForOrg(t *testing.T) {
 	})
 }
 
+// fetchAlertsForRepoTestCase is the table shape for TestFetchAlertsForRepo.
+// Named so checkFetchAlertsForRepoResult can take it as a parameter,
+// keeping the assertion logic out of TestFetchAlertsForRepo's own cyclomatic complexity.
+type fetchAlertsForRepoTestCase struct {
+	handler         func(t *testing.T) http.HandlerFunc
+	wantErr         bool
+	wantErrContains string
+	wantAlertsNil   bool
+	checkAlerts     func(t *testing.T, alerts []SmallDependabotAlert)
+}
+
+func checkFetchAlertsForRepoResult(t *testing.T, tt fetchAlertsForRepoTestCase, alerts []SmallDependabotAlert, err error) {
+	t.Helper()
+
+	switch {
+	case !tt.wantErr && err != nil:
+		t.Fatalf("fetchAlertsForRepo() error = %v, want nil", err)
+	case tt.wantErr && err == nil:
+		t.Fatal("fetchAlertsForRepo() error = nil, want non-nil")
+	case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
+		t.Errorf("fetchAlertsForRepo() error = %v, want it to mention %q", err, tt.wantErrContains)
+	}
+
+	if tt.wantAlertsNil && alerts != nil {
+		t.Errorf("fetchAlertsForRepo() alerts = %v, want nil", alerts)
+	}
+
+	if tt.checkAlerts != nil {
+		tt.checkAlerts(t, alerts)
+	}
+}
+
 func TestFetchAlertsForRepo(t *testing.T) {
-	tests := map[string]struct {
-		handler         func(t *testing.T) http.HandlerFunc
-		wantErr         bool
-		wantErrContains string
-		wantAlertsNil   bool
-		checkAlerts     func(t *testing.T, alerts []SmallDependabotAlert)
-	}{
+	tests := map[string]fetchAlertsForRepoTestCase{
 		"success backfills the repository from ownerRepo": {
 			handler: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
@@ -267,10 +293,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 					}
 
 					w.Header().Set("Content-Type", "application/json")
-
-					if _, err := fmt.Fprint(w, `[{"number":1,"state":"open"}]`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `[{"number":1,"state":"open"}]`)
 				}
 			},
 			checkAlerts: func(t *testing.T, alerts []SmallDependabotAlert) {
@@ -288,10 +311,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusForbidden)
-
-					if _, err := fmt.Fprint(w, `{"message":"Dependabot alerts are disabled for this repository."}`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `{"message":"Dependabot alerts are disabled for this repository."}`)
 				}
 			},
 			wantAlertsNil: true,
@@ -301,10 +321,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusForbidden)
-
-					if _, err := fmt.Fprint(w, `{"message":"You are forbidden."}`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `{"message":"You are forbidden."}`)
 				}
 			},
 			wantErr:       true,
@@ -315,10 +332,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusNotFound)
-
-					if _, err := fmt.Fprint(w, `{"message":"Not Found"}`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `{"message":"Not Found"}`)
 				}
 			},
 			wantErr:         true,
@@ -328,10 +342,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 			handler: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-
-					if _, err := fmt.Fprint(w, `not json`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `not json`)
 				}
 			},
 			wantErr:         true,
@@ -342,25 +353,8 @@ func TestFetchAlertsForRepo(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			client := newTestGithubClient(t, tt.handler(t))
-
 			alerts, err := fetchAlertsForRepo(context.Background(), client, "foo/bar")
-
-			switch {
-			case !tt.wantErr && err != nil:
-				t.Fatalf("fetchAlertsForRepo() error = %v, want nil", err)
-			case tt.wantErr && err == nil:
-				t.Fatal("fetchAlertsForRepo() error = nil, want non-nil")
-			case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
-				t.Errorf("fetchAlertsForRepo() error = %v, want it to mention %q", err, tt.wantErrContains)
-			}
-
-			if tt.wantAlertsNil && alerts != nil {
-				t.Errorf("fetchAlertsForRepo() alerts = %v, want nil", alerts)
-			}
-
-			if tt.checkAlerts != nil {
-				tt.checkAlerts(t, alerts)
-			}
+			checkFetchAlertsForRepoResult(t, tt, alerts, err)
 		})
 	}
 }
@@ -370,21 +364,15 @@ func TestListAlertsForUser(t *testing.T) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-
-			if _, err := fmt.Fprint(w, `[
+			mustFprint(t, w, `[
 				{"name":"active","archived":false},
 				{"name":"old","archived":true},
 				{"archived":false}
-			]`); err != nil {
-				t.Error(err)
-			}
+			]`)
 		})
 		mux.HandleFunc("/repos/alice/active/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-
-			if _, err := fmt.Fprint(w, `[{"number":9}]`); err != nil {
-				t.Error(err)
-			}
+			mustFprint(t, w, `[{"number":9}]`)
 		})
 		mux.HandleFunc("/repos/alice/old/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
 			t.Error("an archived repository should not be queried for alerts")
@@ -410,10 +398,7 @@ func TestListAlertsForUser(t *testing.T) {
 		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-
-			if _, err := fmt.Fprint(w, `{"message":"boom"}`); err != nil {
-				t.Error(err)
-			}
+			mustFprint(t, w, `{"message":"boom"}`)
 		}))
 
 		_, err := listAlertsForUser(context.Background(), client, "alice")
@@ -426,18 +411,12 @@ func TestListAlertsForUser(t *testing.T) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-
-			if _, err := fmt.Fprint(w, `[{"name":"broken","archived":false}]`); err != nil {
-				t.Error(err)
-			}
+			mustFprint(t, w, `[{"name":"broken","archived":false}]`)
 		})
 		mux.HandleFunc("/repos/alice/broken/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-
-			if _, err := fmt.Fprint(w, `{"message":"boom"}`); err != nil {
-				t.Error(err)
-			}
+			mustFprint(t, w, `{"message":"boom"}`)
 		})
 
 		client := newTestGithubClient(t, mux)

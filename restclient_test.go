@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +16,26 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+// mustWrite writes b to w and fails the test if the write errors.
+// It exists so test HTTP handlers don't each need their own if-err branch,
+// which otherwise inflates the cyclomatic complexity of every test that builds one.
+func mustWrite(t *testing.T, w io.Writer, b []byte) {
+	t.Helper()
+
+	if _, err := w.Write(b); err != nil {
+		t.Error(err)
+	}
+}
+
+// mustFprint writes s to w and fails the test if the write errors. See mustWrite.
+func mustFprint(t *testing.T, w io.Writer, s string) {
+	t.Helper()
+
+	if _, err := fmt.Fprint(w, s); err != nil {
+		t.Error(err)
+	}
 }
 
 // noWaitLimiter returns a *rate.Limiter that never blocks, so tests don't pay for real rate limiting.

@@ -32,21 +32,44 @@ func (c closeErrReadCloser) Close() error {
 	return c.closeErr
 }
 
+// fetchPageTestCase is the table shape for TestFetchPage.
+// Named (rather than anonymous) so checkFetchPageResult can take it as a parameter,
+// keeping the assertion logic out of TestFetchPage's own cyclomatic complexity.
+type fetchPageTestCase struct {
+	newClient       func(t *testing.T) *githubClient
+	wantErrContains string // empty means no error expected
+	wantErrIs       error  // optional: also checked with errors.Is
+	check           func(t *testing.T, p Page[testItem])
+}
+
+func checkFetchPageResult(t *testing.T, tt fetchPageTestCase, p Page[testItem], err error) {
+	t.Helper()
+
+	if tt.wantErrContains == "" && tt.wantErrIs == nil {
+		if err != nil {
+			t.Fatalf("fetchPage() error = %v, want nil", err)
+		}
+
+		tt.check(t, p)
+		return
+	}
+
+	if tt.wantErrContains != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrContains)) {
+		t.Errorf("fetchPage() error = %v, want it to mention %q", err, tt.wantErrContains)
+	}
+
+	if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
+		t.Errorf("fetchPage() error = %v, want it to wrap %v", err, tt.wantErrIs)
+	}
+}
+
 func TestFetchPage(t *testing.T) {
-	tests := map[string]struct {
-		newClient       func(t *testing.T) *githubClient
-		wantErrContains string // empty means no error expected
-		wantErrIs       error  // optional: also checked with errors.Is
-		check           func(t *testing.T, p Page[testItem])
-	}{
+	tests := map[string]fetchPageTestCase{
 		"success without a next link": {
 			newClient: func(t *testing.T) *githubClient {
 				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-
-					if _, err := w.Write([]byte(`[{"number":1},{"number":2}]`)); err != nil {
-						t.Error(err)
-					}
+					mustWrite(t, w, []byte(`[{"number":1},{"number":2}]`))
 				}))
 			},
 			check: func(t *testing.T, p Page[testItem]) {
@@ -64,10 +87,7 @@ func TestFetchPage(t *testing.T) {
 				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.Header().Set("Link", `<https://api.github.com/orgs/foo/dependabot/alerts?page=2>; rel="next"`)
-
-					if _, err := w.Write([]byte(`[{"number":1}]`)); err != nil {
-						t.Error(err)
-					}
+					mustWrite(t, w, []byte(`[{"number":1}]`))
 				}))
 			},
 			check: func(t *testing.T, p Page[testItem]) {
@@ -81,10 +101,7 @@ func TestFetchPage(t *testing.T) {
 				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusInternalServerError)
-
-					if _, err := w.Write([]byte(`{"message":"boom"}`)); err != nil {
-						t.Error(err)
-					}
+					mustWrite(t, w, []byte(`{"message":"boom"}`))
 				}))
 			},
 			wantErrContains: "Failed to client.RequestWithContext",
@@ -93,10 +110,7 @@ func TestFetchPage(t *testing.T) {
 			newClient: func(t *testing.T) *githubClient {
 				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-
-					if _, err := w.Write([]byte(`not json`)); err != nil {
-						t.Error(err)
-					}
+					mustWrite(t, w, []byte(`not json`))
 				}))
 			},
 			wantErrContains: "Failed to Decode",
@@ -134,23 +148,7 @@ func TestFetchPage(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			p, err := fetchPage[testItem](context.Background(), tt.newClient(t), "orgs/foo/dependabot/alerts")
-
-			if tt.wantErrContains == "" && tt.wantErrIs == nil {
-				if err != nil {
-					t.Fatalf("fetchPage() error = %v, want nil", err)
-				}
-
-				tt.check(t, p)
-				return
-			}
-
-			if tt.wantErrContains != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrContains)) {
-				t.Errorf("fetchPage() error = %v, want it to mention %q", err, tt.wantErrContains)
-			}
-
-			if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
-				t.Errorf("fetchPage() error = %v, want it to wrap %v", err, tt.wantErrIs)
-			}
+			checkFetchPageResult(t, tt, p, err)
 		})
 	}
 }

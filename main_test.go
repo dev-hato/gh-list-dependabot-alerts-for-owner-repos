@@ -4,34 +4,54 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 )
 
+// runTestCase is the table shape for TestRun.
+// Named so checkRunResult can take it as a parameter,
+// keeping the assertion logic out of TestRun's own cyclomatic complexity.
+type runTestCase struct {
+	args               []string
+	out                io.Writer // nil means capture into a fresh bytes.Buffer
+	newClient          func(t *testing.T) (*githubClient, error)
+	wantErr            bool
+	wantErrContains    string
+	wantErrIs          error // optional: also checked with errors.Is
+	wantOutputContains string
+}
+
+func checkRunResult(t *testing.T, tt runTestCase, buf *bytes.Buffer, err error) {
+	t.Helper()
+
+	switch {
+	case !tt.wantErr && err != nil:
+		t.Fatalf("run() error = %v, want nil", err)
+	case tt.wantErr && err == nil:
+		t.Fatal("run() error = nil, want non-nil")
+	case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
+		t.Errorf("run() error = %v, want it to mention %q", err, tt.wantErrContains)
+	case tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs):
+		t.Errorf("run() error = %v, want it to wrap %v", err, tt.wantErrIs)
+	}
+
+	if tt.wantOutputContains != "" && !strings.Contains(buf.String(), tt.wantOutputContains) {
+		t.Errorf("output = %q, want it to contain %q", buf.String(), tt.wantOutputContains)
+	}
+}
+
 func TestRun(t *testing.T) {
 	errNoClientForYou := errors.New("no client for you")
 
-	tests := map[string]struct {
-		args               []string
-		out                io.Writer // nil means capture into a fresh bytes.Buffer
-		newClient          func(t *testing.T) (*githubClient, error)
-		wantErr            bool
-		wantErrContains    string
-		wantErrIs          error // optional: also checked with errors.Is
-		wantOutputContains string
-	}{
+	tests := map[string]runTestCase{
 		"--org fetches org alerts and prints them as JSON": {
 			args: []string{"--org", "foo"},
 			newClient: func(t *testing.T) (*githubClient, error) {
 				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-
-					if _, err := fmt.Fprint(w, `[{"number":1,"state":"open"}]`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `[{"number":1,"state":"open"}]`)
 				}))
 
 				return &githubClient{rest: client, limiter: noWaitLimiter()}, nil
@@ -44,17 +64,11 @@ func TestRun(t *testing.T) {
 				mux := http.NewServeMux()
 				mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-
-					if _, err := fmt.Fprint(w, `[{"name":"repo","archived":false}]`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `[{"name":"repo","archived":false}]`)
 				})
 				mux.HandleFunc("/repos/alice/repo/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-
-					if _, err := fmt.Fprint(w, `[{"number":7,"state":"open"}]`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `[{"number":7,"state":"open"}]`)
 				})
 
 				client := newTestRESTClient(t, mux)
@@ -95,10 +109,7 @@ func TestRun(t *testing.T) {
 				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusInternalServerError)
-
-					if _, err := fmt.Fprint(w, `{"message":"boom"}`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `{"message":"boom"}`)
 				}))
 
 				return &githubClient{rest: client, limiter: noWaitLimiter()}, nil
@@ -112,10 +123,7 @@ func TestRun(t *testing.T) {
 				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusInternalServerError)
-
-					if _, err := fmt.Fprint(w, `{"message":"boom"}`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `{"message":"boom"}`)
 				}))
 
 				return &githubClient{rest: client, limiter: noWaitLimiter()}, nil
@@ -129,10 +137,7 @@ func TestRun(t *testing.T) {
 			newClient: func(t *testing.T) (*githubClient, error) {
 				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-
-					if _, err := fmt.Fprint(w, `[]`); err != nil {
-						t.Error(err)
-					}
+					mustFprint(t, w, `[]`)
 				}))
 
 				return &githubClient{rest: client, limiter: noWaitLimiter()}, nil
@@ -156,21 +161,7 @@ func TestRun(t *testing.T) {
 			err := run(context.Background(), tt.args, out, func() (*githubClient, error) {
 				return tt.newClient(t)
 			})
-
-			switch {
-			case !tt.wantErr && err != nil:
-				t.Fatalf("run() error = %v, want nil", err)
-			case tt.wantErr && err == nil:
-				t.Fatal("run() error = nil, want non-nil")
-			case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
-				t.Errorf("run() error = %v, want it to mention %q", err, tt.wantErrContains)
-			case tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs):
-				t.Errorf("run() error = %v, want it to wrap %v", err, tt.wantErrIs)
-			}
-
-			if tt.wantOutputContains != "" && !strings.Contains(buf.String(), tt.wantOutputContains) {
-				t.Errorf("output = %q, want it to contain %q", buf.String(), tt.wantOutputContains)
-			}
+			checkRunResult(t, tt, buf, err)
 		})
 	}
 }
