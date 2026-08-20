@@ -5,45 +5,74 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cockroachdb/errors"
 )
 
-func main() {
-	org := flag.String("org", "", "Target organization name")
-	username := flag.String("username", "", "Target username")
-	flag.Parse()
-
-	client, err := api.DefaultRESTClient()
+// newDefaultGithubClient builds the production *githubClient:
+// a real GitHub REST client paired with the package-level rate limiter.
+func newDefaultGithubClient() (*githubClient, error) {
+	rest, err := api.DefaultRESTClient()
 	if err != nil {
-		fatal(errors.Wrap(err, "Failed to api.DefaultRESTClient"))
+		return nil, errors.Wrap(err, "Failed to api.DefaultRESTClient")
 	}
 
-	ctx := context.Background()
+	return &githubClient{rest: rest, limiter: limiter}, nil
+}
+
+// run parses args, fetches the requested Dependabot alerts, and writes them as JSON to out.
+func run(ctx context.Context, args []string, out io.Writer, newClient func() (*githubClient, error)) error {
+	fs := flag.NewFlagSet("gh-list-dependabot-alerts-for-owner-repos", flag.ContinueOnError)
+	org := fs.String("org", "", "Target organization name")
+	username := fs.String("username", "", "Target username")
+
+	if err := fs.Parse(args); err != nil {
+		return errors.Wrap(err, "Failed to fs.Parse")
+	}
+
+	if *org == "" && *username == "" {
+		return errors.New("org and username are both empty")
+	}
+
+	client, err := newClient()
+	if err != nil {
+		return errors.Wrap(err, "Failed to newClient")
+	}
+
 	var smallAlerts []SmallDependabotAlert
 
 	switch {
 	case *org != "":
 		smallAlerts, err = listAlertsForOrg(ctx, client, *org)
 		if err != nil {
-			fatal(errors.Wrap(err, "Failed to listAlertsForOrg"))
-		}
-	case *username != "":
-		smallAlerts, err = listAlertsForUser(ctx, client, *username)
-		if err != nil {
-			fatal(errors.Wrap(err, "Failed to listAlertsForUser"))
+			return errors.Wrap(err, "Failed to listAlertsForOrg")
 		}
 	default:
-		fatal(errors.New("org and username are both empty"))
+		smallAlerts, err = listAlertsForUser(ctx, client, *username)
+		if err != nil {
+			return errors.Wrap(err, "Failed to listAlertsForUser")
+		}
 	}
 
 	smallAlertsJSONBytes, err := json.MarshalIndent(smallAlerts, "", "\t")
 	if err != nil {
-		fatal(errors.Wrap(err, "Failed to json.Marshal"))
+		return errors.Wrap(err, "Failed to json.Marshal")
 	}
 
-	fmt.Println(string(smallAlertsJSONBytes))
+	if _, err := fmt.Fprintln(out, string(smallAlertsJSONBytes)); err != nil {
+		return errors.Wrap(err, "Failed to fmt.Fprintln")
+	}
+
+	return nil
+}
+
+func main() {
+	if err := run(context.Background(), os.Args[1:], os.Stdout, newDefaultGithubClient); err != nil {
+		fatal(err)
+	}
 }
 
 // For more examples of using go-gh, see:
