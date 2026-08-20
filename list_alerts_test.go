@@ -329,7 +329,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 		},
 		"404 is an error, not treated as disabled alerts": {
 			handler: func(t *testing.T) http.HandlerFunc {
-				return func(w http.ResponseWriter, r *http.Request) {
+				return func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusNotFound)
 					mustFprint(t, w, `{"message":"Not Found"}`)
@@ -340,7 +340,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 		},
 		"non-HTTP error is wrapped": {
 			handler: func(t *testing.T) http.HandlerFunc {
-				return func(w http.ResponseWriter, r *http.Request) {
+				return func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					mustFprint(t, w, `not json`)
 				}
@@ -362,7 +362,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 func TestListAlertsForUser(t *testing.T) {
 	t.Run("skips archived and nameless repos, aggregates the rest", func(t *testing.T) {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			mustFprint(t, w, `[
 				{"name":"active","archived":false},
