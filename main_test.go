@@ -97,7 +97,7 @@ func TestRun(t *testing.T) {
 		},
 		"newClient error is wrapped": {
 			args: []string{"--org", "foo"},
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(_ *testing.T) (*githubClient, error) {
 				return nil, errNoClientForYou
 			},
 			wantErr:   true,

@@ -134,7 +134,7 @@ func TestFetchPage(t *testing.T) {
 		"limiter.Wait failure is wrapped": {
 			newClient: func(t *testing.T) *githubClient {
 				return &githubClient{
-					rest: newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					rest: newTestRESTClient(t, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 						t.Error("the server should not be called when waiting fails")
 					})),
 					// A zero-burst limiter can never admit a single request, so Wait fails immediately.

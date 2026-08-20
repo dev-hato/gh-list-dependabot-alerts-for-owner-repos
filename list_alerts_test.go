@@ -235,7 +235,7 @@ func TestListAlertsForOrg(t *testing.T) {
 	})
 
 	t.Run("error from fetchAllPages is wrapped", func(t *testing.T) {
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 
@@ -308,7 +308,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 		},
 		"403 disabled-alerts message returns nil, nil": {
 			handler: func(t *testing.T) http.HandlerFunc {
-				return func(w http.ResponseWriter, r *http.Request) {
+				return func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusForbidden)
 					mustFprint(t, w, `{"message":"Dependabot alerts are disabled for this repository."}`)
@@ -318,7 +318,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 		},
 		"403 with a different message is an error": {
 			handler: func(t *testing.T) http.HandlerFunc {
-				return func(w http.ResponseWriter, r *http.Request) {
+				return func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusForbidden)
 					mustFprint(t, w, `{"message":"You are forbidden."}`)
@@ -374,7 +374,7 @@ func TestListAlertsForUser(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			mustFprint(t, w, `[{"number":9}]`)
 		})
-		mux.HandleFunc("/repos/alice/old/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/repos/alice/old/dependabot/alerts", func(_ http.ResponseWriter, r *http.Request) {
 			t.Error("an archived repository should not be queried for alerts")
 		})
 
