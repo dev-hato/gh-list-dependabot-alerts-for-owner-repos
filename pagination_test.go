@@ -108,7 +108,7 @@ func TestFetchPage(t *testing.T) {
 		},
 		"malformed JSON body is wrapped as a decode error": {
 			newClient: func(t *testing.T) *githubClient {
-				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					mustWrite(t, w, []byte(`not json`))
 				}))
@@ -134,7 +134,7 @@ func TestFetchPage(t *testing.T) {
 		"limiter.Wait failure is wrapped": {
 			newClient: func(t *testing.T) *githubClient {
 				return &githubClient{
-					rest: newTestRESTClient(t, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+					rest: newTestRESTClient(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 						t.Error("the server should not be called when waiting fails")
 					})),
 					// A zero-burst limiter can never admit a single request, so Wait fails immediately.
@@ -192,7 +192,7 @@ func TestFetchAllPages(t *testing.T) {
 	})
 
 	t.Run("propagates a fetchPage error", func(t *testing.T) {
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 
