@@ -120,7 +120,7 @@ func TestRun(t *testing.T) {
 		"listAlertsForUser error is wrapped": {
 			args: []string{"--username", "alice"},
 			newClient: func(t *testing.T) (*githubClient, error) {
-				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusInternalServerError)
 					mustFprint(t, w, `{"message":"boom"}`)
@@ -135,7 +135,7 @@ func TestRun(t *testing.T) {
 			args: []string{"--org", "foo"},
 			out:  failingWriter{},
 			newClient: func(t *testing.T) (*githubClient, error) {
-				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					mustFprint(t, w, `[]`)
 				}))
