@@ -67,10 +67,7 @@ func TestFetchPage(t *testing.T) {
 	tests := map[string]fetchPageTestCase{
 		"success without a next link": {
 			newClient: func(t *testing.T) *githubClient {
-				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					mustWrite(t, w, []byte(`[{"number":1},{"number":2}]`))
-				}))
+				return newTestGithubClient(t, jsonHandler(t, http.StatusOK, `[{"number":1},{"number":2}]`))
 			},
 			check: func(t *testing.T, p Page[testItem]) {
 				if len(p.items) != 2 || p.items[0].Number != 1 || p.items[1].Number != 2 {
@@ -98,20 +95,13 @@ func TestFetchPage(t *testing.T) {
 		},
 		"HTTP error is wrapped": {
 			newClient: func(t *testing.T) *githubClient {
-				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusInternalServerError)
-					mustWrite(t, w, []byte(`{"message":"boom"}`))
-				}))
+				return newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 			},
 			wantErrContains: "Failed to client.RequestWithContext",
 		},
 		"malformed JSON body is wrapped as a decode error": {
 			newClient: func(t *testing.T) *githubClient {
-				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					mustWrite(t, w, []byte(`not json`))
-				}))
+				return newTestGithubClient(t, jsonHandler(t, http.StatusOK, `not json`))
 			},
 			wantErrContains: "Failed to Decode",
 		},
@@ -163,18 +153,12 @@ func TestFetchAllPages(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 
 			if r.URL.Query().Get("page") == "2" {
-				if _, err := w.Write([]byte(`[{"number":2}]`)); err != nil {
-					t.Error(err)
-				}
-
+				mustWrite(t, w, []byte(`[{"number":2}]`))
 				return
 			}
 
 			w.Header().Set("Link", `<https://api.github.com/orgs/foo/dependabot/alerts?page=2>; rel="next"`)
-
-			if _, err := w.Write([]byte(`[{"number":1}]`)); err != nil {
-				t.Error(err)
-			}
+			mustWrite(t, w, []byte(`[{"number":1}]`))
 		}))
 
 		items, err := fetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
@@ -192,14 +176,7 @@ func TestFetchAllPages(t *testing.T) {
 	})
 
 	t.Run("propagates a fetchPage error", func(t *testing.T) {
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-
-			if _, err := w.Write([]byte(`{"message":"boom"}`)); err != nil {
-				t.Error(err)
-			}
-		}))
+		client := newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
 		_, err := fetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
 		if err == nil || !strings.Contains(err.Error(), "Failed to fetchPage") {

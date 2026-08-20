@@ -50,6 +50,27 @@ func newTestGithubClient(t *testing.T, handler http.Handler) *githubClient {
 	return &githubClient{rest: newTestRESTClient(t, handler), limiter: noWaitLimiter()}
 }
 
+// jsonHandler returns an http.HandlerFunc that responds with status and body as an application/json response.
+// It's the shared shape behind most test HTTP handlers in this package:
+// set Content-Type, write the status, write the body.
+func jsonHandler(t *testing.T, status int, body string) http.HandlerFunc {
+	t.Helper()
+
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		mustFprint(t, w, body)
+	}
+}
+
+// jsonGithubClient adapts jsonHandler to the (*githubClient, error) shape a newClient field needs,
+// for the common case of a single-handler test server.
+func jsonGithubClient(t *testing.T, status int, body string) (*githubClient, error) {
+	t.Helper()
+
+	return newTestGithubClient(t, jsonHandler(t, status, body)), nil
+}
+
 func newRESTClientWithTransport(t *testing.T, transport http.RoundTripper) *api.RESTClient {
 	t.Helper()
 

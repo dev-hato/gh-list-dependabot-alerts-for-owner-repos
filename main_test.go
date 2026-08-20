@@ -49,12 +49,7 @@ func TestRun(t *testing.T) {
 		"--org fetches org alerts and prints them as JSON": {
 			args: []string{"--org", "foo"},
 			newClient: func(t *testing.T) (*githubClient, error) {
-				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					mustFprint(t, w, `[{"number":1,"state":"open"}]`)
-				}))
-
-				return &githubClient{rest: client, limiter: noWaitLimiter()}, nil
+				return jsonGithubClient(t, http.StatusOK, `[{"number":1,"state":"open"}]`)
 			},
 			wantOutputContains: `"number": 1`,
 		},
@@ -62,18 +57,10 @@ func TestRun(t *testing.T) {
 			args: []string{"--username", "alice"},
 			newClient: func(t *testing.T) (*githubClient, error) {
 				mux := http.NewServeMux()
-				mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					mustFprint(t, w, `[{"name":"repo","archived":false}]`)
-				})
-				mux.HandleFunc("/repos/alice/repo/dependabot/alerts", func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					mustFprint(t, w, `[{"number":7,"state":"open"}]`)
-				})
+				registerRepoListHandler(t, mux, "alice", []string{"repo"})
+				mux.HandleFunc("/repos/alice/repo/dependabot/alerts", jsonHandler(t, http.StatusOK, `[{"number":7,"state":"open"}]`))
 
-				client := newTestRESTClient(t, mux)
-
-				return &githubClient{rest: client, limiter: noWaitLimiter()}, nil
+				return &githubClient{rest: newTestRESTClient(t, mux), limiter: noWaitLimiter()}, nil
 			},
 			wantOutputContains: `"number": 7`,
 		},
@@ -106,13 +93,7 @@ func TestRun(t *testing.T) {
 		"listAlertsForOrg error is wrapped": {
 			args: []string{"--org", "foo"},
 			newClient: func(t *testing.T) (*githubClient, error) {
-				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusInternalServerError)
-					mustFprint(t, w, `{"message":"boom"}`)
-				}))
-
-				return &githubClient{rest: client, limiter: noWaitLimiter()}, nil
+				return jsonGithubClient(t, http.StatusInternalServerError, `{"message":"boom"}`)
 			},
 			wantErr:         true,
 			wantErrContains: "Failed to listAlertsForOrg",
@@ -120,13 +101,7 @@ func TestRun(t *testing.T) {
 		"listAlertsForUser error is wrapped": {
 			args: []string{"--username", "alice"},
 			newClient: func(t *testing.T) (*githubClient, error) {
-				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusInternalServerError)
-					mustFprint(t, w, `{"message":"boom"}`)
-				}))
-
-				return &githubClient{rest: client, limiter: noWaitLimiter()}, nil
+				return jsonGithubClient(t, http.StatusInternalServerError, `{"message":"boom"}`)
 			},
 			wantErr:         true,
 			wantErrContains: "Failed to listAlertsForUser",
@@ -135,12 +110,7 @@ func TestRun(t *testing.T) {
 			args: []string{"--org", "foo"},
 			out:  failingWriter{},
 			newClient: func(t *testing.T) (*githubClient, error) {
-				client := newTestRESTClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					mustFprint(t, w, `[]`)
-				}))
-
-				return &githubClient{rest: client, limiter: noWaitLimiter()}, nil
+				return jsonGithubClient(t, http.StatusOK, `[]`)
 			},
 			wantErr:         true,
 			wantErrContains: "Failed to fmt.Fprintln",

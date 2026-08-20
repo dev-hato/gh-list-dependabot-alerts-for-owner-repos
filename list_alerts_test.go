@@ -235,14 +235,7 @@ func TestListAlertsForOrg(t *testing.T) {
 	})
 
 	t.Run("error from fetchAllPages is wrapped", func(t *testing.T) {
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-
-			if _, err := fmt.Fprint(w, `{"message":"boom"}`); err != nil {
-				t.Error(err)
-			}
-		}))
+		client := newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
 		_, err := listAlertsForOrg(context.Background(), client, "foo")
 		if err == nil || !strings.Contains(err.Error(), "Failed to fetchAllPages") {
@@ -308,42 +301,27 @@ func TestFetchAlertsForRepo(t *testing.T) {
 		},
 		"403 disabled-alerts message returns nil, nil": {
 			handler: func(t *testing.T) http.HandlerFunc {
-				return func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusForbidden)
-					mustFprint(t, w, `{"message":"Dependabot alerts are disabled for this repository."}`)
-				}
+				return jsonHandler(t, http.StatusForbidden, `{"message":"Dependabot alerts are disabled for this repository."}`)
 			},
 			wantAlertsNil: true,
 		},
 		"403 with a different message is an error": {
 			handler: func(t *testing.T) http.HandlerFunc {
-				return func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusForbidden)
-					mustFprint(t, w, `{"message":"You are forbidden."}`)
-				}
+				return jsonHandler(t, http.StatusForbidden, `{"message":"You are forbidden."}`)
 			},
 			wantErr:       true,
 			wantAlertsNil: true,
 		},
 		"404 is an error, not treated as disabled alerts": {
 			handler: func(t *testing.T) http.HandlerFunc {
-				return func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusNotFound)
-					mustFprint(t, w, `{"message":"Not Found"}`)
-				}
+				return jsonHandler(t, http.StatusNotFound, `{"message":"Not Found"}`)
 			},
 			wantErr:         true,
 			wantErrContains: "Failed to fetchAllPages",
 		},
 		"non-HTTP error is wrapped": {
 			handler: func(t *testing.T) http.HandlerFunc {
-				return func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					mustFprint(t, w, `not json`)
-				}
+				return jsonHandler(t, http.StatusOK, `not json`)
 			},
 			wantErr:         true,
 			wantErrContains: "Failed to fetchAllPages",
@@ -370,10 +348,7 @@ func TestListAlertsForUser(t *testing.T) {
 				{"archived":false}
 			]`)
 		})
-		mux.HandleFunc("/repos/alice/active/dependabot/alerts", func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			mustFprint(t, w, `[{"number":9}]`)
-		})
+		mux.HandleFunc("/repos/alice/active/dependabot/alerts", jsonHandler(t, http.StatusOK, `[{"number":9}]`))
 		mux.HandleFunc("/repos/alice/old/dependabot/alerts", func(_ http.ResponseWriter, _ *http.Request) {
 			t.Error("an archived repository should not be queried for alerts")
 		})
@@ -395,11 +370,7 @@ func TestListAlertsForUser(t *testing.T) {
 	})
 
 	t.Run("error listing repos is wrapped", func(t *testing.T) {
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			mustFprint(t, w, `{"message":"boom"}`)
-		}))
+		client := newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
 		_, err := listAlertsForUser(context.Background(), client, "alice")
 		if err == nil || !strings.Contains(err.Error(), "Failed to fetchAllPages") {
@@ -409,15 +380,8 @@ func TestListAlertsForUser(t *testing.T) {
 
 	t.Run("error fetching a repo's alerts is wrapped", func(t *testing.T) {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			mustFprint(t, w, `[{"name":"broken","archived":false}]`)
-		})
-		mux.HandleFunc("/repos/alice/broken/dependabot/alerts", func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			mustFprint(t, w, `{"message":"boom"}`)
-		})
+		registerRepoListHandler(t, mux, "alice", []string{"broken"})
+		mux.HandleFunc("/repos/alice/broken/dependabot/alerts", jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
 		client := newTestGithubClient(t, mux)
 
