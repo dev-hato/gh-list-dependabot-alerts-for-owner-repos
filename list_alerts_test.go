@@ -370,11 +370,11 @@ func TestListAlertsForUser(t *testing.T) {
 				{"archived":false}
 			]`)
 		})
-		mux.HandleFunc("/repos/alice/active/dependabot/alerts", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/repos/alice/active/dependabot/alerts", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			mustFprint(t, w, `[{"number":9}]`)
 		})
-		mux.HandleFunc("/repos/alice/old/dependabot/alerts", func(_ http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/repos/alice/old/dependabot/alerts", func(_ http.ResponseWriter, _ *http.Request) {
 			t.Error("an archived repository should not be queried for alerts")
 		})
 
@@ -395,7 +395,7 @@ func TestListAlertsForUser(t *testing.T) {
 	})
 
 	t.Run("error listing repos is wrapped", func(t *testing.T) {
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			mustFprint(t, w, `{"message":"boom"}`)
