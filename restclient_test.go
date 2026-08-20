@@ -18,18 +18,9 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-// mustWrite writes b to w and fails the test if the write errors.
+// mustFprint writes s to w and fails the test if the write errors.
 // It exists so test HTTP handlers don't each need their own if-err branch,
 // which otherwise inflates the cyclomatic complexity of every test that builds one.
-func mustWrite(t *testing.T, w io.Writer, b []byte) {
-	t.Helper()
-
-	if _, err := w.Write(b); err != nil {
-		t.Error(err)
-	}
-}
-
-// mustFprint writes s to w and fails the test if the write errors. See mustWrite.
 func mustFprint(t *testing.T, w io.Writer, s string) {
 	t.Helper()
 
@@ -61,14 +52,6 @@ func jsonHandler(t *testing.T, status int, body string) http.HandlerFunc {
 		w.WriteHeader(status)
 		mustFprint(t, w, body)
 	}
-}
-
-// jsonGithubClient adapts jsonHandler to the (*githubClient, error) shape a newClient field needs,
-// for the common case of a single-handler test server.
-func jsonGithubClient(t *testing.T, status int, body string) (*githubClient, error) {
-	t.Helper()
-
-	return newTestGithubClient(t, jsonHandler(t, status, body)), nil
 }
 
 func newRESTClientWithTransport(t *testing.T, transport http.RoundTripper) *api.RESTClient {

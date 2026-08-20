@@ -23,6 +23,15 @@ func (failingWriter) Write([]byte) (int, error) {
 	return 0, errors.New("write boom")
 }
 
+// mustWrite writes b to w and fails the test if the write errors. See mustFprint (restclient_test.go).
+func mustWrite(t *testing.T, w io.Writer, b []byte) {
+	t.Helper()
+
+	if _, err := w.Write(b); err != nil {
+		t.Error(err)
+	}
+}
+
 type closeErrReadCloser struct {
 	io.Reader
 	closeErr error

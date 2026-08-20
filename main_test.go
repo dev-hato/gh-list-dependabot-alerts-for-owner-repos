@@ -23,6 +23,14 @@ type runTestCase struct {
 	wantOutputContains string
 }
 
+// jsonGithubClient adapts jsonHandler to the (*githubClient, error) shape a newClient field needs,
+// for the common case of a single-handler test server.
+func jsonGithubClient(t *testing.T, status int, body string) (*githubClient, error) {
+	t.Helper()
+
+	return newTestGithubClient(t, jsonHandler(t, status, body)), nil
+}
+
 func checkRunResult(t *testing.T, tt runTestCase, buf *bytes.Buffer, err error) {
 	t.Helper()
 
