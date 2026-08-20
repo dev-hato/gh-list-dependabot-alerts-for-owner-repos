@@ -286,7 +286,10 @@ func TestFetchAlertsForRepo(t *testing.T) {
 					}
 
 					w.Header().Set("Content-Type", "application/json")
-					mustFprint(t, w, `[{"number":1,"state":"open"}]`)
+
+					if _, err := fmt.Fprint(w, `[{"number":1,"state":"open"}]`); err != nil {
+						t.Error(err)
+					}
 				}
 			},
 			checkAlerts: func(t *testing.T, alerts []SmallDependabotAlert) {
@@ -342,11 +345,14 @@ func TestListAlertsForUser(t *testing.T) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			mustFprint(t, w, `[
+
+			if _, err := fmt.Fprint(w, `[
 				{"name":"active","archived":false},
 				{"name":"old","archived":true},
 				{"archived":false}
-			]`)
+			]`); err != nil {
+				t.Error(err)
+			}
 		})
 		mux.HandleFunc("/repos/alice/active/dependabot/alerts", jsonHandler(t, http.StatusOK, `[{"number":9}]`))
 		mux.HandleFunc("/repos/alice/old/dependabot/alerts", func(_ http.ResponseWriter, _ *http.Request) {

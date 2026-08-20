@@ -23,15 +23,6 @@ func (failingWriter) Write([]byte) (int, error) {
 	return 0, errors.New("write boom")
 }
 
-// mustWrite writes b to w and fails the test if the write errors. See mustFprint (restclient_test.go).
-func mustWrite(t *testing.T, w io.Writer, b []byte) {
-	t.Helper()
-
-	if _, err := w.Write(b); err != nil {
-		t.Error(err)
-	}
-}
-
 type closeErrReadCloser struct {
 	io.Reader
 	closeErr error
@@ -93,7 +84,10 @@ func TestFetchPage(t *testing.T) {
 				return newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.Header().Set("Link", `<https://api.github.com/orgs/foo/dependabot/alerts?page=2>; rel="next"`)
-					mustWrite(t, w, []byte(`[{"number":1}]`))
+
+					if _, err := w.Write([]byte(`[{"number":1}]`)); err != nil {
+						t.Error(err)
+					}
 				}))
 			},
 			check: func(t *testing.T, p Page[testItem]) {
@@ -162,12 +156,18 @@ func TestFetchAllPages(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 
 			if r.URL.Query().Get("page") == "2" {
-				mustWrite(t, w, []byte(`[{"number":2}]`))
+				if _, err := w.Write([]byte(`[{"number":2}]`)); err != nil {
+					t.Error(err)
+				}
+
 				return
 			}
 
 			w.Header().Set("Link", `<https://api.github.com/orgs/foo/dependabot/alerts?page=2>; rel="next"`)
-			mustWrite(t, w, []byte(`[{"number":1}]`))
+
+			if _, err := w.Write([]byte(`[{"number":1}]`)); err != nil {
+				t.Error(err)
+			}
 		}))
 
 		items, err := fetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
