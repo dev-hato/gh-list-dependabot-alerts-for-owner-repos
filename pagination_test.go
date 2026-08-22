@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"golang.org/x/time/rate"
 )
 
@@ -85,8 +86,8 @@ func TestFetchPage(t *testing.T) {
 				return newTestGithubClient(t, jsonHandler(t, http.StatusOK, `[{"number":1},{"number":2}]`))
 			},
 			check: func(t *testing.T, p Page[testItem]) {
-				if len(p.items) != 2 || p.items[0].Number != 1 || p.items[1].Number != 2 {
-					t.Errorf("items = %+v, want [{1} {2}]", p.items)
+				if diff := cmp.Diff([]testItem{{Number: 1}, {Number: 2}}, p.items); diff != "" {
+					t.Errorf("items mismatch (-want +got):\n%s", diff)
 				}
 
 				if p.nextPath != "orgs/foo/dependabot/alerts" {
@@ -174,8 +175,8 @@ func TestFetchAllPages(t *testing.T) {
 			t.Fatalf("fetchAllPages() error = %v, want nil", err)
 		}
 
-		if len(items) != 2 || items[0].Number != 1 || items[1].Number != 2 {
-			t.Errorf("items = %+v, want [{1} {2}]", items)
+		if diff := cmp.Diff([]testItem{{Number: 1}, {Number: 2}}, items); diff != "" {
+			t.Errorf("fetchAllPages() mismatch (-want +got):\n%s", diff)
 		}
 
 		if calls != 2 {

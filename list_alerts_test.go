@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
@@ -84,20 +86,14 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 		t.Fatalf("listAlertsForUser() error = %v", err)
 	}
 
-	if len(alerts) != 2 {
-		t.Fatalf("len(alerts) = %d, want 2", len(alerts))
+	// slow-repo's alert must land first despite finishing last, and fast-repo's second despite finishing first.
+	want := []SmallDependabotAlert{
+		{Number: new(1), Repository: &SmallRepository{FullName: new(username + "/" + repos[0])}},
+		{Number: new(2), Repository: &SmallRepository{FullName: new(username + "/" + repos[1])}},
 	}
 
-	if got := *alerts[0].Number; got != 1 {
-		t.Errorf("alerts[0].Number = %d, want 1 (slow-repo, first in repository order)", got)
-	}
-
-	if got := *alerts[1].Number; got != 2 {
-		t.Errorf("alerts[1].Number = %d, want 2 (fast-repo, second in repository order)", got)
-	}
-
-	if got := *alerts[0].Repository.FullName; got != username+"/"+repos[0] {
-		t.Errorf("alerts[0].Repository.FullName = %s, want %s", got, username+"/"+repos[0])
+	if diff := cmp.Diff(want, alerts); diff != "" {
+		t.Errorf("listAlertsForUser() mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -221,16 +217,13 @@ func TestListAlertsForOrg(t *testing.T) {
 			t.Fatalf("listAlertsForOrg() error = %v, want nil", err)
 		}
 
-		if len(alerts) != 2 {
-			t.Fatalf("len(alerts) = %d, want 2", len(alerts))
+		want := []SmallDependabotAlert{
+			{Number: new(1), State: new("open"), Repository: &SmallRepository{FullName: new("foo/bar")}},
+			{Number: new(2), State: new("open")},
 		}
 
-		if alerts[0].Repository == nil || *alerts[0].Repository.FullName != "foo/bar" {
-			t.Errorf("alerts[0].Repository = %+v, want foo/bar", alerts[0].Repository)
-		}
-
-		if alerts[1].Repository != nil {
-			t.Errorf("alerts[1].Repository = %+v, want nil (alert had no repository)", alerts[1].Repository)
+		if diff := cmp.Diff(want, alerts); diff != "" {
+			t.Errorf("listAlertsForOrg() mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -293,12 +286,12 @@ func TestFetchAlertsForRepo(t *testing.T) {
 				}
 			},
 			checkAlerts: func(t *testing.T, alerts []SmallDependabotAlert) {
-				if len(alerts) != 1 {
-					t.Fatalf("len(alerts) = %d, want 1", len(alerts))
+				want := []SmallDependabotAlert{
+					{Number: new(1), State: new("open"), Repository: &SmallRepository{FullName: new("foo/bar")}},
 				}
 
-				if alerts[0].Repository == nil || *alerts[0].Repository.FullName != "foo/bar" {
-					t.Errorf("alerts[0].Repository = %+v, want foo/bar", alerts[0].Repository)
+				if diff := cmp.Diff(want, alerts); diff != "" {
+					t.Errorf("fetchAlertsForRepo() mismatch (-want +got):\n%s", diff)
 				}
 			},
 		},
@@ -366,12 +359,12 @@ func TestListAlertsForUser(t *testing.T) {
 			t.Fatalf("listAlertsForUser() error = %v, want nil", err)
 		}
 
-		if len(alerts) != 1 || alerts[0].Number == nil || *alerts[0].Number != 9 {
-			t.Fatalf("alerts = %+v, want a single alert numbered 9", alerts)
+		want := []SmallDependabotAlert{
+			{Number: new(9), Repository: &SmallRepository{FullName: new("alice/active")}},
 		}
 
-		if alerts[0].Repository == nil || *alerts[0].Repository.FullName != "alice/active" {
-			t.Errorf("alerts[0].Repository = %+v, want alice/active", alerts[0].Repository)
+		if diff := cmp.Diff(want, alerts); diff != "" {
+			t.Errorf("listAlertsForUser() mismatch (-want +got):\n%s", diff)
 		}
 	})
 
