@@ -54,8 +54,8 @@ func TestRun(t *testing.T) {
 				t.Fatal("newClient should not be called")
 				return nil, nil
 			},
-			wantErr:         true,
-			wantErrContains: "org and username are both empty",
+			wantErr:   true,
+			wantErrIs: errOrgAndUsernameEmpty,
 		},
 		"flag parse error is wrapped": {
 			args: []string{"--not-a-real-flag"},

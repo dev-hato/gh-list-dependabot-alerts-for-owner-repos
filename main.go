@@ -23,6 +23,10 @@ func newDefaultGithubClient() (*githubClient, error) {
 	return &githubClient{rest: rest, limiter: limiter}, nil
 }
 
+// errOrgAndUsernameEmpty is returned by run when neither --org nor --username is set.
+// It's a package-level sentinel (rather than an inline errors.New) so tests can assert on it with errors.Is.
+var errOrgAndUsernameEmpty = errors.New("org and username are both empty")
+
 // run parses args, fetches the requested Dependabot alerts, and writes them as JSON to out.
 func run(ctx context.Context, args []string, out io.Writer, newClient func() (*githubClient, error)) error {
 	fs := flag.NewFlagSet("gh-list-dependabot-alerts-for-owner-repos", flag.ContinueOnError)
@@ -34,7 +38,7 @@ func run(ctx context.Context, args []string, out io.Writer, newClient func() (*g
 	}
 
 	if *org == "" && *username == "" {
-		return errors.New("org and username are both empty")
+		return errOrgAndUsernameEmpty
 	}
 
 	client, err := newClient()
