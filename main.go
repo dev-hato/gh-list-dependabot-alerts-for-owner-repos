@@ -12,6 +12,10 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+// errOrgAndUsernameEmpty is returned by run when neither --org nor --username is set.
+// It's a package-level sentinel (rather than an inline errors.New) so tests can assert on it with errors.Is.
+var errOrgAndUsernameEmpty = errors.New("org and username are both empty")
+
 // newDefaultGithubClient builds the production *githubClient:
 // a real GitHub REST client paired with the package-level rate limiter.
 func newDefaultGithubClient() (*githubClient, error) {
@@ -22,10 +26,6 @@ func newDefaultGithubClient() (*githubClient, error) {
 
 	return &githubClient{rest: rest, limiter: limiter}, nil
 }
-
-// errOrgAndUsernameEmpty is returned by run when neither --org nor --username is set.
-// It's a package-level sentinel (rather than an inline errors.New) so tests can assert on it with errors.Is.
-var errOrgAndUsernameEmpty = errors.New("org and username are both empty")
 
 // run parses args, fetches the requested Dependabot alerts, and writes them as JSON to out.
 func run(ctx context.Context, args []string, out io.Writer, newClient func() (*githubClient, error)) error {
