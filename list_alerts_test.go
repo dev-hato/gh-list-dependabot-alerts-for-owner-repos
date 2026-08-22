@@ -237,40 +237,14 @@ func TestListAlertsForOrg(t *testing.T) {
 	})
 }
 
-// fetchAlertsForRepoTestCase is the table shape for TestFetchAlertsForRepo.
-// Named so checkFetchAlertsForRepoResult can take it as a parameter,
-// keeping the assertion logic out of TestFetchAlertsForRepo's own cyclomatic complexity.
-type fetchAlertsForRepoTestCase struct {
-	handler         func(t *testing.T) http.HandlerFunc
-	wantErr         bool
-	wantErrContains string
-	wantAlertsNil   bool
-	checkAlerts     func(t *testing.T, alerts []SmallDependabotAlert)
-}
-
-func checkFetchAlertsForRepoResult(t *testing.T, tt fetchAlertsForRepoTestCase, alerts []SmallDependabotAlert, err error) {
-	t.Helper()
-
-	switch {
-	case !tt.wantErr && err != nil:
-		t.Fatalf("fetchAlertsForRepo() error = %v, want nil", err)
-	case tt.wantErr && err == nil:
-		t.Fatal("fetchAlertsForRepo() error = nil, want non-nil")
-	case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
-		t.Errorf("fetchAlertsForRepo() error = %v, want it to mention %q", err, tt.wantErrContains)
-	}
-
-	if tt.wantAlertsNil && alerts != nil {
-		t.Errorf("fetchAlertsForRepo() alerts = %v, want nil", alerts)
-	}
-
-	if tt.checkAlerts != nil {
-		tt.checkAlerts(t, alerts)
-	}
-}
-
 func TestFetchAlertsForRepo(t *testing.T) {
-	tests := map[string]fetchAlertsForRepoTestCase{
+	tests := map[string]struct {
+		handler         func(t *testing.T) http.HandlerFunc
+		wantErr         bool
+		wantErrContains string
+		wantAlertsNil   bool
+		checkAlerts     func(t *testing.T, alerts []SmallDependabotAlert)
+	}{
 		"success backfills the repository from ownerRepo": {
 			handler: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
@@ -328,7 +302,23 @@ func TestFetchAlertsForRepo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			client := newTestGithubClient(t, tt.handler(t))
 			alerts, err := fetchAlertsForRepo(context.Background(), client, "foo/bar")
-			checkFetchAlertsForRepoResult(t, tt, alerts, err)
+
+			switch {
+			case !tt.wantErr && err != nil:
+				t.Fatalf("fetchAlertsForRepo() error = %v, want nil", err)
+			case tt.wantErr && err == nil:
+				t.Fatal("fetchAlertsForRepo() error = nil, want non-nil")
+			case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
+				t.Errorf("fetchAlertsForRepo() error = %v, want it to mention %q", err, tt.wantErrContains)
+			}
+
+			if tt.wantAlertsNil && alerts != nil {
+				t.Errorf("fetchAlertsForRepo() alerts = %v, want nil", alerts)
+			}
+
+			if tt.checkAlerts != nil {
+				tt.checkAlerts(t, alerts)
+			}
 		})
 	}
 }

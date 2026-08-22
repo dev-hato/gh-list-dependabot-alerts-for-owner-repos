@@ -48,39 +48,13 @@ func nextPage2Handler(t *testing.T, body string) http.HandlerFunc {
 	}
 }
 
-// fetchPageTestCase is the table shape for TestFetchPage.
-// Named (rather than anonymous) so checkFetchPageResult can take it as a parameter,
-// keeping the assertion logic out of TestFetchPage's own cyclomatic complexity.
-type fetchPageTestCase struct {
-	newClient       func(t *testing.T) *githubClient
-	wantErrContains string // empty means no error expected
-	wantErrIs       error  // optional: also checked with errors.Is
-	check           func(t *testing.T, p Page[testItem])
-}
-
-func checkFetchPageResult(t *testing.T, tt fetchPageTestCase, p Page[testItem], err error) {
-	t.Helper()
-
-	if tt.wantErrContains == "" && tt.wantErrIs == nil {
-		if err != nil {
-			t.Fatalf("fetchPage() error = %v, want nil", err)
-		}
-
-		tt.check(t, p)
-		return
-	}
-
-	if tt.wantErrContains != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrContains)) {
-		t.Errorf("fetchPage() error = %v, want it to mention %q", err, tt.wantErrContains)
-	}
-
-	if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
-		t.Errorf("fetchPage() error = %v, want it to wrap %v", err, tt.wantErrIs)
-	}
-}
-
 func TestFetchPage(t *testing.T) {
-	tests := map[string]fetchPageTestCase{
+	tests := map[string]struct {
+		newClient       func(t *testing.T) *githubClient
+		wantErrContains string // empty means no error expected
+		wantErrIs       error  // optional: also checked with errors.Is
+		check           func(t *testing.T, p Page[testItem])
+	}{
 		"success without a next link": {
 			newClient: func(t *testing.T) *githubClient {
 				return newTestGithubClient(t, jsonHandler(t, http.StatusOK, `[{"number":1},{"number":2}]`))
@@ -150,7 +124,23 @@ func TestFetchPage(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			p, err := fetchPage[testItem](context.Background(), tt.newClient(t), "orgs/foo/dependabot/alerts")
-			checkFetchPageResult(t, tt, p, err)
+
+			if tt.wantErrContains == "" && tt.wantErrIs == nil {
+				if err != nil {
+					t.Fatalf("fetchPage() error = %v, want nil", err)
+				}
+
+				tt.check(t, p)
+				return
+			}
+
+			if tt.wantErrContains != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrContains)) {
+				t.Errorf("fetchPage() error = %v, want it to mention %q", err, tt.wantErrContains)
+			}
+
+			if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
+				t.Errorf("fetchPage() error = %v, want it to wrap %v", err, tt.wantErrIs)
+			}
 		})
 	}
 }

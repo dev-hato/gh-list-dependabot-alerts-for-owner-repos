@@ -10,19 +10,6 @@ import (
 	"testing"
 )
 
-// runTestCase is the table shape for TestRun.
-// Named so checkRunResult can take it as a parameter,
-// keeping the assertion logic out of TestRun's own cyclomatic complexity.
-type runTestCase struct {
-	args               []string
-	out                io.Writer // nil means capture into a fresh bytes.Buffer
-	newClient          func(t *testing.T) (*githubClient, error)
-	wantErr            bool
-	wantErrContains    string
-	wantErrIs          error // optional: also checked with errors.Is
-	wantOutputContains string
-}
-
 // jsonGithubClient adapts jsonHandler to the (*githubClient, error) shape a newClient field needs,
 // for the common case of a single-handler test server.
 func jsonGithubClient(t *testing.T, status int, body string) (*githubClient, error) {
@@ -31,29 +18,18 @@ func jsonGithubClient(t *testing.T, status int, body string) (*githubClient, err
 	return newTestGithubClient(t, jsonHandler(t, status, body)), nil
 }
 
-func checkRunResult(t *testing.T, tt runTestCase, buf *bytes.Buffer, err error) {
-	t.Helper()
-
-	switch {
-	case !tt.wantErr && err != nil:
-		t.Fatalf("run() error = %v, want nil", err)
-	case tt.wantErr && err == nil:
-		t.Fatal("run() error = nil, want non-nil")
-	case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
-		t.Errorf("run() error = %v, want it to mention %q", err, tt.wantErrContains)
-	case tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs):
-		t.Errorf("run() error = %v, want it to wrap %v", err, tt.wantErrIs)
-	}
-
-	if tt.wantOutputContains != "" && !strings.Contains(buf.String(), tt.wantOutputContains) {
-		t.Errorf("output = %q, want it to contain %q", buf.String(), tt.wantOutputContains)
-	}
-}
-
 func TestRun(t *testing.T) {
 	errNoClientForYou := errors.New("no client for you")
 
-	tests := map[string]runTestCase{
+	tests := map[string]struct {
+		args               []string
+		out                io.Writer // nil means capture into a fresh bytes.Buffer
+		newClient          func(t *testing.T) (*githubClient, error)
+		wantErr            bool
+		wantErrContains    string
+		wantErrIs          error // optional: also checked with errors.Is
+		wantOutputContains string
+	}{
 		"--org fetches org alerts and prints them as JSON": {
 			args: []string{"--org", "foo"},
 			newClient: func(t *testing.T) (*githubClient, error) {
@@ -139,7 +115,21 @@ func TestRun(t *testing.T) {
 			err := run(context.Background(), tt.args, out, func() (*githubClient, error) {
 				return tt.newClient(t)
 			})
-			checkRunResult(t, tt, buf, err)
+
+			switch {
+			case !tt.wantErr && err != nil:
+				t.Fatalf("run() error = %v, want nil", err)
+			case tt.wantErr && err == nil:
+				t.Fatal("run() error = nil, want non-nil")
+			case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
+				t.Errorf("run() error = %v, want it to mention %q", err, tt.wantErrContains)
+			case tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs):
+				t.Errorf("run() error = %v, want it to wrap %v", err, tt.wantErrIs)
+			}
+
+			if tt.wantOutputContains != "" && !strings.Contains(buf.String(), tt.wantOutputContains) {
+				t.Errorf("output = %q, want it to contain %q", buf.String(), tt.wantOutputContains)
+			}
 		})
 	}
 }
