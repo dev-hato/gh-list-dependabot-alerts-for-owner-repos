@@ -71,7 +71,9 @@ func run(ctx context.Context, args []string, out io.Writer, newClient func() (*g
 
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout, newDefaultGithubClient); err != nil {
-		fatal(err)
+		if fatalErr := fatal(err, os.Stderr, os.Exit); fatalErr != nil {
+			panic(fatalErr)
+		}
 	}
 }
 

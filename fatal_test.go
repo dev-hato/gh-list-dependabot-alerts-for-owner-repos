@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-func TestFatalWithExit(t *testing.T) {
+func TestFatal(t *testing.T) {
 	t.Run("logs the error and exits with status 1", func(t *testing.T) {
 		var buf bytes.Buffer
 		var gotCode int
 
-		if err := fatalWithExit(errors.New("boom"), &buf, func(code int) { gotCode = code }); err != nil {
+		if err := fatal(errors.New("boom"), &buf, func(code int) { gotCode = code }); err != nil {
 			t.Error(err)
 		}
 
