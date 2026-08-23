@@ -160,12 +160,12 @@ func TestFetchAllPages(t *testing.T) {
 			nextPage2Handler(t, `[{"number":1}]`)(w, r)
 		}))
 
-		items, err := fetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
+		got, err := fetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
 		if err != nil {
 			t.Fatalf("fetchAllPages() error = %v, want nil", err)
 		}
 
-		if diff := cmp.Diff([]testItem{{Number: 1}, {Number: 2}}, items); diff != "" {
+		if diff := cmp.Diff([]testItem{{Number: 1}, {Number: 2}}, got); diff != "" {
 			t.Errorf("fetchAllPages() mismatch (-want +got):\n%s", diff)
 		}
 

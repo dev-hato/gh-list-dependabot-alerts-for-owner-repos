@@ -73,7 +73,7 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 
 	repos := []string{"slow-repo", "fast-repo"}
 
-	alerts, err := callListAlertsForUser(t, username, repos, []repoAlertsHandler{
+	got, err := callListAlertsForUser(t, username, repos, []repoAlertsHandler{
 		{repos[0], func(w http.ResponseWriter, _ *http.Request) {
 			time.Sleep(50 * time.Millisecond)
 			writeJSON(t, w, []map[string]any{{"number": 1}})
@@ -92,7 +92,7 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 		{Number: new(2), Repository: &SmallRepository{FullName: new(username + "/" + repos[1])}},
 	}
 
-	if diff := cmp.Diff(want, alerts); diff != "" {
+	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("listAlertsForUser() mismatch (-want +got):\n%s", diff)
 	}
 }
@@ -212,7 +212,7 @@ func TestListAlertsForOrg(t *testing.T) {
 			}
 		}))
 
-		alerts, err := listAlertsForOrg(context.Background(), client, "foo")
+		got, err := listAlertsForOrg(context.Background(), client, "foo")
 		if err != nil {
 			t.Fatalf("listAlertsForOrg() error = %v, want nil", err)
 		}
@@ -222,7 +222,7 @@ func TestListAlertsForOrg(t *testing.T) {
 			{Number: new(2), State: new("open")},
 		}
 
-		if diff := cmp.Diff(want, alerts); diff != "" {
+		if diff := cmp.Diff(want, got); diff != "" {
 			t.Errorf("listAlertsForOrg() mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -243,7 +243,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 		wantErr         bool
 		wantErrContains string
 		wantAlertsNil   bool
-		checkAlerts     func(t *testing.T, alerts []SmallDependabotAlert)
+		checkAlerts     func(t *testing.T, got []SmallDependabotAlert)
 	}{
 		"success backfills the repository from ownerRepo": {
 			handler: func(t *testing.T) http.HandlerFunc {
@@ -259,12 +259,12 @@ func TestFetchAlertsForRepo(t *testing.T) {
 					}
 				}
 			},
-			checkAlerts: func(t *testing.T, alerts []SmallDependabotAlert) {
+			checkAlerts: func(t *testing.T, got []SmallDependabotAlert) {
 				want := []SmallDependabotAlert{
 					{Number: new(1), State: new("open"), Repository: &SmallRepository{FullName: new("foo/bar")}},
 				}
 
-				if diff := cmp.Diff(want, alerts); diff != "" {
+				if diff := cmp.Diff(want, got); diff != "" {
 					t.Errorf("fetchAlertsForRepo() mismatch (-want +got):\n%s", diff)
 				}
 			},
@@ -344,7 +344,7 @@ func TestListAlertsForUser(t *testing.T) {
 
 		client := newTestGithubClient(t, mux)
 
-		alerts, err := listAlertsForUser(context.Background(), client, "alice")
+		got, err := listAlertsForUser(context.Background(), client, "alice")
 		if err != nil {
 			t.Fatalf("listAlertsForUser() error = %v, want nil", err)
 		}
@@ -353,7 +353,7 @@ func TestListAlertsForUser(t *testing.T) {
 			{Number: new(9), Repository: &SmallRepository{FullName: new("alice/active")}},
 		}
 
-		if diff := cmp.Diff(want, alerts); diff != "" {
+		if diff := cmp.Diff(want, got); diff != "" {
 			t.Errorf("listAlertsForUser() mismatch (-want +got):\n%s", diff)
 		}
 	})
