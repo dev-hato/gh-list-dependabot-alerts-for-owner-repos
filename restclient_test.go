@@ -54,7 +54,7 @@ func newRESTClientWithTransport(t *testing.T, transport http.RoundTripper) *api.
 		Transport: transport,
 	})
 	if err != nil {
-		t.Fatalf("failed to build test REST client: %v", err)
+		t.Fatal(err)
 	}
 
 	return client
@@ -70,7 +70,7 @@ func newTestRESTClient(t *testing.T, handler http.Handler) *api.RESTClient {
 
 	serverURL, err := url.Parse(server.URL)
 	if err != nil {
-		t.Fatalf("failed to parse test server URL: %v", err)
+		t.Fatal(err)
 	}
 
 	return newRESTClientWithTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
