@@ -31,8 +31,8 @@ func TestToSmallDependabotAlert(t *testing.T) {
 				},
 				HTMLURL:   new("https://github.com/octocat/Hello-World/security/dependabot/3"),
 				CreatedAt: &createdAt,
-				// Repository is intentionally set here to confirm toSmallDependabotAlert
-				// does NOT copy it; callers are responsible for attaching it themselves.
+				// Repository is intentionally set here to confirm toSmallDependabotAlert does NOT copy it;
+				// callers are responsible for attaching it themselves.
 				Repository: &github.Repository{FullName: new("octocat/Hello-World")},
 			},
 			want: SmallDependabotAlert{
@@ -48,8 +48,7 @@ func TestToSmallDependabotAlert(t *testing.T) {
 				},
 				HTMLURL:   new("https://github.com/octocat/Hello-World/security/dependabot/3"),
 				CreatedAt: &createdAt,
-				// Repository is intentionally omitted here to confirm
-				// toSmallDependabotAlert does NOT copy it.
+				// Repository is intentionally omitted here to confirm toSmallDependabotAlert does NOT copy it.
 				Repository: nil,
 			},
 		},

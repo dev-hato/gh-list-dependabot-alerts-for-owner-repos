@@ -22,8 +22,8 @@ func noWaitLimiter() *rate.Limiter {
 	return rate.NewLimiter(rate.Inf, 0)
 }
 
-// newTestGithubClient returns a *githubClient whose requests are redirected to an httptest.Server
-// running handler, paired with a Waiter that never blocks.
+// newTestGithubClient returns a *githubClient whose requests are redirected to an httptest.Server running handler,
+// paired with a Waiter that never blocks.
 func newTestGithubClient(t *testing.T, handler http.Handler) *githubClient {
 	t.Helper()
 	return &githubClient{rest: newTestRESTClient(t, handler), limiter: noWaitLimiter()}
