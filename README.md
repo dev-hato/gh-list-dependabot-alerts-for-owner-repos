@@ -39,10 +39,10 @@ Specify either `--org` or `--username`. Running the command with both left empty
 
 ### Options
 
-| Option       | Description                |
-| ------------ | ------------------------- |
-| `--org`      | Target organization name  |
-| `--username` | Target username           |
+| Option         | Description              |
+| -------------- | ------------------------ |
+| `--org`        | Target organization name |
+| `--username`   | Target username          |
 | `-h`, `--help` | Show usage help and exit |
 
 ## Example output
