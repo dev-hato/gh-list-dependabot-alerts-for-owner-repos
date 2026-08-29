@@ -72,6 +72,16 @@ func TestRun(t *testing.T) {
 			},
 			wantOutputContains: "Usage: gh list-dependabot-alerts-for-owner-repos",
 		},
+		"usage write error is wrapped": {
+			args: []string{"--help"},
+			out:  failingWriter{},
+			newClient: func(t *testing.T) (*githubClient, error) {
+				t.Fatal("newClient should not be called")
+				return nil, nil
+			},
+			wantErr:         true,
+			wantErrContains: "Failed to io.WriteString",
+		},
 		"flag parse error is wrapped": {
 			args: []string{"--not-a-real-flag"},
 			newClient: func(t *testing.T) (*githubClient, error) {

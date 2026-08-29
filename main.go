@@ -36,13 +36,16 @@ func run(ctx context.Context, args []string, out io.Writer, newClient func() (*g
 	}
 
 	if *help || *h || (*org == "" && *username == "") {
-		_, _ = io.WriteString(out, `Usage: gh list-dependabot-alerts-for-owner-repos [options]
+		if _, err := io.WriteString(out, `Usage: gh list-dependabot-alerts-for-owner-repos [options]
 
 A GitHub CLI extension that lists Dependabot alerts (vulnerability alerts from Dependabot).
 It covers every repository owned by an organization or a user.
 
 Options:
-`)
+`); err != nil {
+			return errors.Wrap(err, "Failed to io.WriteString")
+		}
+
 		fs.SetOutput(out)
 		fs.PrintDefaults()
 		return nil
