@@ -25,17 +25,19 @@ func newDefaultGithubClient() (*githubClient, error) {
 
 // run parses args, fetches the requested Dependabot alerts, and writes them as JSON to out.
 func run(ctx context.Context, args []string, out io.Writer, newClient func() (*githubClient, error)) error {
+	var help bool
+
 	fs := flag.NewFlagSet("gh-list-dependabot-alerts-for-owner-repos", flag.ContinueOnError)
 	org := fs.String("org", "", "Target organization name")
 	username := fs.String("username", "", "Target username")
-	help := fs.Bool("help", false, "Show this help and exit")
-	h := fs.Bool("h", false, "Show this help and exit")
+	fs.BoolVar(&help, "help", false, "Show this help and exit")
+	fs.BoolVar(&help, "h", false, "Show this help and exit")
 
 	if err := fs.Parse(args); err != nil {
 		return errors.Wrap(err, "Failed to fs.Parse")
 	}
 
-	if *help || *h || (*org == "" && *username == "") {
+	if help || (*org == "" && *username == "") {
 		if _, err := io.WriteString(out, `Usage: gh list-dependabot-alerts-for-owner-repos [options]
 
 A GitHub CLI extension that lists Dependabot alerts (vulnerability alerts from Dependabot).
