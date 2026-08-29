@@ -35,14 +35,15 @@ To fetch alerts for all repositories owned by a user:
 gh list-dependabot-alerts-for-owner-repos --username <username>
 ```
 
-Specify either `--org` or `--username`. Running the command with both left empty results in an error.
+Specify either `--org` or `--username`. Running the command with both left empty prints the usage help and exits.
 
 ### Options
 
-| Option       | Description              |
-| ------------ | ------------------------ |
-| `--org`      | Target organization name |
-| `--username` | Target username          |
+| Option       | Description                |
+| ------------ | ------------------------- |
+| `--org`      | Target organization name  |
+| `--username` | Target username           |
+| `-h`, `--help` | Show usage help and exit |
 
 ## Example output
 
