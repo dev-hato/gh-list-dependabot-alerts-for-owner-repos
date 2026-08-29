@@ -48,14 +48,39 @@ func TestRun(t *testing.T) {
 			},
 			wantOutputContains: `"number": 7`,
 		},
-		"neither flag set is an error": {
+		"neither flag set prints usage and exits without error": {
 			args: nil,
 			newClient: func(t *testing.T) (*githubClient, error) {
 				t.Fatal("newClient should not be called")
 				return nil, nil
 			},
-			wantErr:   true,
-			wantErrIs: errOrgAndUsernameEmpty,
+			wantOutputContains: "Usage: gh list-dependabot-alerts-for-owner-repos",
+		},
+		"--help prints usage and exits without error": {
+			args: []string{"--help"},
+			newClient: func(t *testing.T) (*githubClient, error) {
+				t.Fatal("newClient should not be called")
+				return nil, nil
+			},
+			wantOutputContains: "Usage: gh list-dependabot-alerts-for-owner-repos",
+		},
+		"-h prints usage and exits without error": {
+			args: []string{"-h"},
+			newClient: func(t *testing.T) (*githubClient, error) {
+				t.Fatal("newClient should not be called")
+				return nil, nil
+			},
+			wantOutputContains: "Usage: gh list-dependabot-alerts-for-owner-repos",
+		},
+		"usage write error is wrapped": {
+			args: []string{"--help"},
+			out:  failingWriter{},
+			newClient: func(t *testing.T) (*githubClient, error) {
+				t.Fatal("newClient should not be called")
+				return nil, nil
+			},
+			wantErr:         true,
+			wantErrContains: "Failed to io.WriteString",
 		},
 		"flag parse error is wrapped": {
 			args: []string{"--not-a-real-flag"},

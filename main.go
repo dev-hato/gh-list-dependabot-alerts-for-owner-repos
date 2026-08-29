@@ -12,10 +12,6 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// errOrgAndUsernameEmpty is returned by run when neither --org nor --username is set.
-// It's a package-level sentinel (rather than an inline errors.New) so tests can assert on it with errors.Is.
-var errOrgAndUsernameEmpty = errors.New("org and username are both empty")
-
 // newDefaultGithubClient builds the production *githubClient:
 // a real GitHub REST client paired with the package-level rate limiter.
 func newDefaultGithubClient() (*githubClient, error) {
@@ -29,16 +25,32 @@ func newDefaultGithubClient() (*githubClient, error) {
 
 // run parses args, fetches the requested Dependabot alerts, and writes them as JSON to out.
 func run(ctx context.Context, args []string, out io.Writer, newClient func() (*githubClient, error)) error {
+	var help bool
+
 	fs := flag.NewFlagSet("gh-list-dependabot-alerts-for-owner-repos", flag.ContinueOnError)
 	org := fs.String("org", "", "Target organization name")
 	username := fs.String("username", "", "Target username")
+	fs.BoolVar(&help, "help", false, "Show this help and exit")
+	fs.BoolVar(&help, "h", false, "Show this help and exit")
 
 	if err := fs.Parse(args); err != nil {
 		return errors.Wrap(err, "Failed to fs.Parse")
 	}
 
-	if *org == "" && *username == "" {
-		return errOrgAndUsernameEmpty
+	if help || (*org == "" && *username == "") {
+		if _, err := io.WriteString(out, `Usage: gh list-dependabot-alerts-for-owner-repos [options]
+
+A GitHub CLI extension that lists Dependabot alerts (vulnerability alerts from Dependabot).
+It covers every repository owned by an organization or a user.
+
+Options:
+`); err != nil {
+			return errors.Wrap(err, "Failed to io.WriteString")
+		}
+
+		fs.SetOutput(out)
+		fs.PrintDefaults()
+		return nil
 	}
 
 	client, err := newClient()
