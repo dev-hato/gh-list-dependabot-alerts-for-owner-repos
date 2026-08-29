@@ -59,11 +59,24 @@ It's a `golang.org/x/time/rate.Limiter`, built via `rate.NewLimiter(5, 1)`.
 That's 5 requests per second, with a burst size of one.
 `fetchPage` (`pagination.go`) calls `limiter.Wait(ctx)` before every single HTTP request.
 That blocks until the limiter admits the request.
+`client` and `limiter` are bundled into one `*githubClient` (`pagination.go`).
+It's defined as `{rest *api.RESTClient, limiter *rate.Limiter}`.
+Every fetch always needs both together, so they travel as a single value.
+
+That value is threaded through as a parameter.
+It comes down from `main`'s `run`, itself injectable via `newClient`.
+So tests can exercise the whole call chain against a fake HTTP server.
+That covers `main_test.go`, `list_alerts_test.go`, and `pagination_test.go`.
+Tests build one via `newTestGithubClient()` and `noWaitLimiter()` (`restclient_test.go`).
+That limiter never blocks.
+
 `rate.Limiter` is safe for concurrent use.
+The production `limiter` is one process-wide instance shared across all goroutines.
 This matters because `listAlertsForUser` fetches repositories in parallel.
-The previous hand-rolled `Waiter` raced under that usage.
-It used exponential backoff with an unsynchronized `attempt` counter.
-A `Call <path>` progress line is still logged to stderr before each request.
+Keep `limiter` a single shared instance passed down to every goroutine.
+A limiter constructed fresh per call or per goroutine would stop throttling entirely.
+Each fresh instance starts unthrottled, no matter how many requests other goroutines just made.
+`fetchPage` writes its `Call <path>` progress line straight to `os.Stderr`.
 This is expected/normal output, not an error.
 It is documented in the readme for users who see the run appear to hang.
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cockroachdb/errors"
+	"golang.org/x/time/rate"
 )
 
 type Page[T any] struct {
@@ -17,10 +18,17 @@ type Page[T any] struct {
 	nextPath string
 }
 
-func fetchPage[T any](ctx context.Context, client *api.RESTClient, path string) (p Page[T], err error) {
+// githubClient bundles the REST client with the rate limiter that throttles it.
+// Every fetch needs both together, so they travel as one parameter instead of two.
+type githubClient struct {
+	rest    *api.RESTClient
+	limiter *rate.Limiter
+}
+
+func fetchPage[T any](ctx context.Context, client *githubClient, path string) (p Page[T], err error) {
 	p.nextPath = path
 
-	if err = limiter.Wait(ctx); err != nil {
+	if err = client.limiter.Wait(ctx); err != nil {
 		return p, errors.Wrap(err, "Failed to limiter.Wait")
 	}
 
@@ -28,7 +36,7 @@ func fetchPage[T any](ctx context.Context, client *api.RESTClient, path string) 
 		return p, errors.Wrap(err, "Failed to fmt.Fprintf")
 	}
 
-	httpResponse, err := client.RequestWithContext(ctx, http.MethodGet, path, nil)
+	httpResponse, err := client.rest.RequestWithContext(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return p, errors.Wrap(err, "Failed to client.RequestWithContext")
 	}
@@ -47,7 +55,7 @@ func fetchPage[T any](ctx context.Context, client *api.RESTClient, path string) 
 	return p, nil
 }
 
-func fetchAllPages[T any](ctx context.Context, client *api.RESTClient, path string) ([]T, error) {
+func fetchAllPages[T any](ctx context.Context, client *githubClient, path string) ([]T, error) {
 	var allItems []T
 
 	for {

@@ -21,7 +21,7 @@ func openAlertsURL(path string) string {
 	return u.String()
 }
 
-func listAlertsForOrg(ctx context.Context, client *api.RESTClient, org string) ([]SmallDependabotAlert, error) {
+func listAlertsForOrg(ctx context.Context, client *githubClient, org string) ([]SmallDependabotAlert, error) {
 	listOrgAlertsURL := openAlertsURL(fmt.Sprintf("orgs/%s/dependabot/alerts", org))
 
 	alerts, err := fetchAllPages[github.DependabotAlert](ctx, client, listOrgAlertsURL)
@@ -46,7 +46,7 @@ func listAlertsForOrg(ctx context.Context, client *api.RESTClient, org string) (
 
 // fetchAlertsForRepo fetches the open Dependabot alerts for a single "owner/repo".
 // It returns (nil, nil) when Dependabot alerts are disabled for the repository.
-func fetchAlertsForRepo(ctx context.Context, client *api.RESTClient, ownerRepo string) ([]SmallDependabotAlert, error) {
+func fetchAlertsForRepo(ctx context.Context, client *githubClient, ownerRepo string) ([]SmallDependabotAlert, error) {
 	listRepoAlertsURL := openAlertsURL(fmt.Sprintf("repos/%s/dependabot/alerts", ownerRepo))
 
 	alerts, err := fetchAllPages[github.DependabotAlert](ctx, client, listRepoAlertsURL)
@@ -78,7 +78,7 @@ func fetchAlertsForRepo(ctx context.Context, client *api.RESTClient, ownerRepo s
 // one repository at a time but in parallel across repositories.
 // The shared rate limiter (limiter.Wait in pagination.go's fetchPage) keeps the combined request rate in check,
 // so parallelizing here doesn't burst requests against GitHub.
-func listAlertsForUser(ctx context.Context, client *api.RESTClient, username string) ([]SmallDependabotAlert, error) {
+func listAlertsForUser(ctx context.Context, client *githubClient, username string) ([]SmallDependabotAlert, error) {
 	repositories, err := fetchAllPages[github.Repository](ctx, client, fmt.Sprintf("users/%s/repos", username))
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to fetchAllPages")

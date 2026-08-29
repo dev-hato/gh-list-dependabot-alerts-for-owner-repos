@@ -2,16 +2,18 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"io"
 
 	"github.com/cockroachdb/errors"
 )
 
-// fatal logs err with its stack trace to stderr and exits abnormally.
-func fatal(err error) {
-	if _, fprintfErr := fmt.Fprintf(os.Stderr, "%+v\n", err); fprintfErr != nil {
-		panic(errors.Join(err, errors.Wrap(fprintfErr, "Failed to fmt.Fprintf")))
+// fatal logs err with its stack trace to w (stderr in production) and calls exit(1).
+// w and exit are taken as parameters so tests can inject a non-exiting exit func and capture the output.
+func fatal(err error, w io.Writer, exit func(code int)) error {
+	if _, fprintfErr := fmt.Fprintf(w, "%+v\n", err); fprintfErr != nil {
+		return errors.Join(err, errors.Wrap(fprintfErr, "Failed to fmt.Fprintf"))
 	}
 
-	os.Exit(1)
+	exit(1)
+	return nil
 }
