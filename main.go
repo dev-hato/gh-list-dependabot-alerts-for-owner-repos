@@ -28,8 +28,8 @@ func run(ctx context.Context, args []string, out io.Writer, newClient func() (*g
 	fs := flag.NewFlagSet("gh-list-dependabot-alerts-for-owner-repos", flag.ContinueOnError)
 	org := fs.String("org", "", "Target organization name")
 	username := fs.String("username", "", "Target username")
-	help := fs.Bool("help", false, "show this help and exit")
-	h := fs.Bool("h", false, "show this help and exit")
+	help := fs.Bool("help", false, "Show this help and exit")
+	h := fs.Bool("h", false, "Show this help and exit")
 
 	if err := fs.Parse(args); err != nil {
 		return errors.Wrap(err, "Failed to fs.Parse")
