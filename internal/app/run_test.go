@@ -1,4 +1,4 @@
-package main
+package app_test
 
 import (
 	"bytes"
@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 )
 
-// jsonGithubClient adapts jsonHandler to the (*githubClient, error) shape a newClient field needs,
+// jsonGithubClient adapts jsonHandler to the (*app.GithubClient, error) shape a newClient field needs,
 // for the common case of a single-handler test server.
-func jsonGithubClient(t *testing.T, status int, body string) (*githubClient, error) {
+func jsonGithubClient(t *testing.T, status int, body string) (*app.GithubClient, error) {
 	t.Helper()
 
 	return newTestGithubClient(t, jsonHandler(t, status, body)), nil
@@ -24,7 +26,7 @@ func TestRun(t *testing.T) {
 	tests := map[string]struct {
 		args               []string
 		out                io.Writer // nil means capture into a fresh bytes.Buffer
-		newClient          func(t *testing.T) (*githubClient, error)
+		newClient          func(t *testing.T) (*app.GithubClient, error)
 		wantErr            bool
 		wantErrContains    string
 		wantErrIs          error // optional: also checked with errors.Is
@@ -32,25 +34,25 @@ func TestRun(t *testing.T) {
 	}{
 		"--org fetches org alerts and prints them as JSON": {
 			args: []string{"--org", "foo"},
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				return jsonGithubClient(t, http.StatusOK, `[{"number":1,"state":"open"}]`)
 			},
 			wantOutputContains: `"number": 1`,
 		},
 		"--username fetches user alerts and prints them as JSON": {
 			args: []string{"--username", "alice"},
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				mux := http.NewServeMux()
 				registerRepoListHandler(t, mux, "alice", []string{"repo"})
 				mux.HandleFunc("/repos/alice/repo/dependabot/alerts", jsonHandler(t, http.StatusOK, `[{"number":7,"state":"open"}]`))
 
-				return &githubClient{rest: newTestRESTClient(t, mux), limiter: noWaitLimiter()}, nil
+				return &app.GithubClient{Rest: newTestRESTClient(t, mux), Limiter: noWaitLimiter()}, nil
 			},
 			wantOutputContains: `"number": 7`,
 		},
 		"neither flag set prints usage and exits without error": {
 			args: nil,
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				t.Fatal("newClient should not be called")
 				return nil, nil
 			},
@@ -58,7 +60,7 @@ func TestRun(t *testing.T) {
 		},
 		"--help prints usage and exits without error": {
 			args: []string{"--help"},
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				t.Fatal("newClient should not be called")
 				return nil, nil
 			},
@@ -66,7 +68,7 @@ func TestRun(t *testing.T) {
 		},
 		"-h prints usage and exits without error": {
 			args: []string{"-h"},
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				t.Fatal("newClient should not be called")
 				return nil, nil
 			},
@@ -75,7 +77,7 @@ func TestRun(t *testing.T) {
 		"usage write error is wrapped": {
 			args: []string{"--help"},
 			out:  failingWriter{},
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				t.Fatal("newClient should not be called")
 				return nil, nil
 			},
@@ -84,7 +86,7 @@ func TestRun(t *testing.T) {
 		},
 		"flag parse error is wrapped": {
 			args: []string{"--not-a-real-flag"},
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				t.Fatal("newClient should not be called")
 				return nil, nil
 			},
@@ -93,7 +95,7 @@ func TestRun(t *testing.T) {
 		},
 		"newClient error is wrapped": {
 			args: []string{"--org", "foo"},
-			newClient: func(_ *testing.T) (*githubClient, error) {
+			newClient: func(_ *testing.T) (*app.GithubClient, error) {
 				return nil, errNoClientForYou
 			},
 			wantErr:   true,
@@ -101,24 +103,24 @@ func TestRun(t *testing.T) {
 		},
 		"listAlertsForOrg error is wrapped": {
 			args: []string{"--org", "foo"},
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				return jsonGithubClient(t, http.StatusInternalServerError, `{"message":"boom"}`)
 			},
 			wantErr:         true,
-			wantErrContains: "Failed to listAlertsForOrg",
+			wantErrContains: "Failed to ListAlertsForOrg",
 		},
 		"listAlertsForUser error is wrapped": {
 			args: []string{"--username", "alice"},
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				return jsonGithubClient(t, http.StatusInternalServerError, `{"message":"boom"}`)
 			},
 			wantErr:         true,
-			wantErrContains: "Failed to listAlertsForUser",
+			wantErrContains: "Failed to ListAlertsForUser",
 		},
 		"output write error is wrapped": {
 			args: []string{"--org", "foo"},
 			out:  failingWriter{},
-			newClient: func(t *testing.T) (*githubClient, error) {
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				return jsonGithubClient(t, http.StatusOK, `[]`)
 			},
 			wantErr:         true,
@@ -137,19 +139,19 @@ func TestRun(t *testing.T) {
 				out = buf
 			}
 
-			err := run(context.Background(), tt.args, out, func() (*githubClient, error) {
+			err := app.Run(context.Background(), tt.args, out, func() (*app.GithubClient, error) {
 				return tt.newClient(t)
 			})
 
 			switch {
 			case !tt.wantErr && err != nil:
-				t.Fatalf("run() error = %v, want nil", err)
+				t.Fatalf("Run() error = %v, want nil", err)
 			case tt.wantErr && err == nil:
-				t.Fatal("run() error = nil, want non-nil")
+				t.Fatal("Run() error = nil, want non-nil")
 			case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
-				t.Errorf("run() error = %v, want it to mention %q", err, tt.wantErrContains)
+				t.Errorf("Run() error = %v, want it to mention %q", err, tt.wantErrContains)
 			case tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs):
-				t.Errorf("run() error = %v, want it to wrap %v", err, tt.wantErrIs)
+				t.Errorf("Run() error = %v, want it to wrap %v", err, tt.wantErrIs)
 			}
 
 			if tt.wantOutputContains != "" && !strings.Contains(buf.String(), tt.wantOutputContains) {

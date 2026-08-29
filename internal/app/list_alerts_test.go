@@ -1,4 +1,4 @@
-package main
+package app_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -49,7 +50,7 @@ type repoAlertsHandler struct {
 // callListAlertsForUser builds an httptest.Server whose mux has the "list user's repos" endpoint registered for repos,
 // plus one dependabot-alerts handler per entry in handlers, then calls listAlertsForUser against it.
 // The server is closed automatically via t.Cleanup.
-func callListAlertsForUser(t *testing.T, username string, repos []string, handlers []repoAlertsHandler) ([]SmallDependabotAlert, error) {
+func callListAlertsForUser(t *testing.T, username string, repos []string, handlers []repoAlertsHandler) ([]app.SmallDependabotAlert, error) {
 	t.Helper()
 
 	mux := http.NewServeMux()
@@ -60,7 +61,7 @@ func callListAlertsForUser(t *testing.T, username string, repos []string, handle
 	}
 
 	client := newTestGithubClient(t, mux)
-	return listAlertsForUser(context.Background(), client, username)
+	return app.ListAlertsForUser(context.Background(), client, username)
 }
 
 // TestListAlertsForUserPreservesRepositoryOrder fetches alerts for repos in parallel,
@@ -83,17 +84,17 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 		}},
 	})
 	if err != nil {
-		t.Fatalf("listAlertsForUser() error = %v", err)
+		t.Fatalf("ListAlertsForUser() error = %v", err)
 	}
 
 	// slow-repo's alert must land first despite finishing last, and fast-repo's second despite finishing first.
-	want := []SmallDependabotAlert{
-		{Number: new(1), Repository: &SmallRepository{FullName: new(username + "/" + repos[0])}},
-		{Number: new(2), Repository: &SmallRepository{FullName: new(username + "/" + repos[1])}},
+	want := []app.SmallDependabotAlert{
+		{Number: new(1), Repository: &app.SmallRepository{FullName: new(username + "/" + repos[0])}},
+		{Number: new(2), Repository: &app.SmallRepository{FullName: new(username + "/" + repos[1])}},
 	}
 
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Errorf("listAlertsForUser() mismatch (-want +got):\n%s", diff)
+		t.Errorf("ListAlertsForUser() mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -134,7 +135,7 @@ func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
 
 	alerts, err := callListAlertsForUser(t, username, repos, handlers)
 	if err != nil {
-		t.Fatalf("listAlertsForUser() error = %v", err)
+		t.Fatalf("ListAlertsForUser() error = %v", err)
 	}
 
 	if len(alerts) != len(repos) {
@@ -159,10 +160,10 @@ func TestListAlertsForUserPropagatesRepoError(t *testing.T) {
 		}},
 	})
 	if err == nil {
-		t.Fatal("listAlertsForUser() error = nil, want error")
+		t.Fatal("ListAlertsForUser() error = nil, want error")
 	}
 
-	if !strings.Contains(err.Error(), "fetchAlertsForRepo") {
+	if !strings.Contains(err.Error(), "FetchAlertsForRepo") {
 		t.Errorf("error = %v, want wrapped fetchAlertsForRepo error", err)
 	}
 }
@@ -188,8 +189,8 @@ func TestOpenAlertsURL(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := openAlertsURL(tt.path); got != tt.want {
-				t.Errorf("openAlertsURL(%q) = %q, want %q", tt.path, got, tt.want)
+			if got := app.OpenAlertsURL(tt.path); got != tt.want {
+				t.Errorf("OpenAlertsURL(%q) = %q, want %q", tt.path, got, tt.want)
 			}
 		})
 	}
@@ -212,27 +213,27 @@ func TestListAlertsForOrg(t *testing.T) {
 			}
 		}))
 
-		got, err := listAlertsForOrg(context.Background(), client, "foo")
+		got, err := app.ListAlertsForOrg(context.Background(), client, "foo")
 		if err != nil {
-			t.Fatalf("listAlertsForOrg() error = %v, want nil", err)
+			t.Fatalf("ListAlertsForOrg() error = %v, want nil", err)
 		}
 
-		want := []SmallDependabotAlert{
-			{Number: new(1), State: new("open"), Repository: &SmallRepository{FullName: new("foo/bar")}},
+		want := []app.SmallDependabotAlert{
+			{Number: new(1), State: new("open"), Repository: &app.SmallRepository{FullName: new("foo/bar")}},
 			{Number: new(2), State: new("open")},
 		}
 
 		if diff := cmp.Diff(want, got); diff != "" {
-			t.Errorf("listAlertsForOrg() mismatch (-want +got):\n%s", diff)
+			t.Errorf("ListAlertsForOrg() mismatch (-want +got):\n%s", diff)
 		}
 	})
 
 	t.Run("error from fetchAllPages is wrapped", func(t *testing.T) {
 		client := newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
-		_, err := listAlertsForOrg(context.Background(), client, "foo")
-		if err == nil || !strings.Contains(err.Error(), "Failed to fetchAllPages") {
-			t.Errorf("listAlertsForOrg() error = %v, want it to mention fetchAllPages", err)
+		_, err := app.ListAlertsForOrg(context.Background(), client, "foo")
+		if err == nil || !strings.Contains(err.Error(), "Failed to FetchAllPages") {
+			t.Errorf("ListAlertsForOrg() error = %v, want it to mention fetchAllPages", err)
 		}
 	})
 }
@@ -243,7 +244,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 		wantErr         bool
 		wantErrContains string
 		wantAlertsNil   bool
-		checkAlerts     func(t *testing.T, got []SmallDependabotAlert)
+		checkAlerts     func(t *testing.T, got []app.SmallDependabotAlert)
 	}{
 		"success backfills the repository from ownerRepo": {
 			handler: func(t *testing.T) http.HandlerFunc {
@@ -259,13 +260,13 @@ func TestFetchAlertsForRepo(t *testing.T) {
 					}
 				}
 			},
-			checkAlerts: func(t *testing.T, got []SmallDependabotAlert) {
-				want := []SmallDependabotAlert{
-					{Number: new(1), State: new("open"), Repository: &SmallRepository{FullName: new("foo/bar")}},
+			checkAlerts: func(t *testing.T, got []app.SmallDependabotAlert) {
+				want := []app.SmallDependabotAlert{
+					{Number: new(1), State: new("open"), Repository: &app.SmallRepository{FullName: new("foo/bar")}},
 				}
 
 				if diff := cmp.Diff(want, got); diff != "" {
-					t.Errorf("fetchAlertsForRepo() mismatch (-want +got):\n%s", diff)
+					t.Errorf("FetchAlertsForRepo() mismatch (-want +got):\n%s", diff)
 				}
 			},
 		},
@@ -287,33 +288,33 @@ func TestFetchAlertsForRepo(t *testing.T) {
 				return jsonHandler(t, http.StatusNotFound, `{"message":"Not Found"}`)
 			},
 			wantErr:         true,
-			wantErrContains: "Failed to fetchAllPages",
+			wantErrContains: "Failed to FetchAllPages",
 		},
 		"non-HTTP error is wrapped": {
 			handler: func(t *testing.T) http.HandlerFunc {
 				return jsonHandler(t, http.StatusOK, `not json`)
 			},
 			wantErr:         true,
-			wantErrContains: "Failed to fetchAllPages",
+			wantErrContains: "Failed to FetchAllPages",
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			client := newTestGithubClient(t, tt.handler(t))
-			alerts, err := fetchAlertsForRepo(context.Background(), client, "foo/bar")
+			alerts, err := app.FetchAlertsForRepo(context.Background(), client, "foo/bar")
 
 			switch {
 			case !tt.wantErr && err != nil:
-				t.Fatalf("fetchAlertsForRepo() error = %v, want nil", err)
+				t.Fatalf("FetchAlertsForRepo() error = %v, want nil", err)
 			case tt.wantErr && err == nil:
-				t.Fatal("fetchAlertsForRepo() error = nil, want non-nil")
+				t.Fatal("FetchAlertsForRepo() error = nil, want non-nil")
 			case tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains):
-				t.Errorf("fetchAlertsForRepo() error = %v, want it to mention %q", err, tt.wantErrContains)
+				t.Errorf("FetchAlertsForRepo() error = %v, want it to mention %q", err, tt.wantErrContains)
 			}
 
 			if tt.wantAlertsNil && alerts != nil {
-				t.Errorf("fetchAlertsForRepo() alerts = %v, want nil", alerts)
+				t.Errorf("FetchAlertsForRepo() alerts = %v, want nil", alerts)
 			}
 
 			if tt.checkAlerts != nil {
@@ -344,26 +345,26 @@ func TestListAlertsForUser(t *testing.T) {
 
 		client := newTestGithubClient(t, mux)
 
-		got, err := listAlertsForUser(context.Background(), client, "alice")
+		got, err := app.ListAlertsForUser(context.Background(), client, "alice")
 		if err != nil {
-			t.Fatalf("listAlertsForUser() error = %v, want nil", err)
+			t.Fatalf("ListAlertsForUser() error = %v, want nil", err)
 		}
 
-		want := []SmallDependabotAlert{
-			{Number: new(9), Repository: &SmallRepository{FullName: new("alice/active")}},
+		want := []app.SmallDependabotAlert{
+			{Number: new(9), Repository: &app.SmallRepository{FullName: new("alice/active")}},
 		}
 
 		if diff := cmp.Diff(want, got); diff != "" {
-			t.Errorf("listAlertsForUser() mismatch (-want +got):\n%s", diff)
+			t.Errorf("ListAlertsForUser() mismatch (-want +got):\n%s", diff)
 		}
 	})
 
 	t.Run("error listing repos is wrapped", func(t *testing.T) {
 		client := newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
-		_, err := listAlertsForUser(context.Background(), client, "alice")
-		if err == nil || !strings.Contains(err.Error(), "Failed to fetchAllPages") {
-			t.Errorf("listAlertsForUser() error = %v, want it to mention fetchAllPages", err)
+		_, err := app.ListAlertsForUser(context.Background(), client, "alice")
+		if err == nil || !strings.Contains(err.Error(), "Failed to FetchAllPages") {
+			t.Errorf("ListAlertsForUser() error = %v, want it to mention fetchAllPages", err)
 		}
 	})
 
@@ -374,9 +375,9 @@ func TestListAlertsForUser(t *testing.T) {
 
 		client := newTestGithubClient(t, mux)
 
-		_, err := listAlertsForUser(context.Background(), client, "alice")
-		if err == nil || !strings.Contains(err.Error(), "Failed to fetchAlertsForRepo") {
-			t.Errorf("listAlertsForUser() error = %v, want it to mention fetchAlertsForRepo", err)
+		_, err := app.ListAlertsForUser(context.Background(), client, "alice")
+		if err == nil || !strings.Contains(err.Error(), "Failed to FetchAlertsForRepo") {
+			t.Errorf("ListAlertsForUser() error = %v, want it to mention fetchAlertsForRepo", err)
 		}
 	})
 }

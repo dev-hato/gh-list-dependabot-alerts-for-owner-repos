@@ -1,10 +1,12 @@
-package main
+package app_test
 
 import (
 	"bytes"
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 )
 
 func TestFatal(t *testing.T) {
@@ -13,7 +15,7 @@ func TestFatal(t *testing.T) {
 		var buf bytes.Buffer
 		var gotCode int
 
-		if err := fatal(errors.New(errorMessage), &buf, func(code int) { gotCode = code }); err != nil {
+		if err := app.Fatal(errors.New(errorMessage), &buf, func(code int) { gotCode = code }); err != nil {
 			t.Error(err)
 		}
 
