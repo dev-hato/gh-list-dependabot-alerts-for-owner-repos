@@ -8,7 +8,7 @@ It covers every repository owned by an organization or a user.
 ## What it does
 
 - With `--org`: fetches alerts for every repository under the specified organization.
-- With `--username`: fetches alerts for every repository owned by the specified user.
+- Without `--org`: fetches alerts for every repository owned by the `gh`-authenticated account.
 
 ## Requirements
 
@@ -29,20 +29,17 @@ To fetch alerts for all repositories under an organization:
 gh list-dependabot-alerts-for-owner-repos --org <organization>
 ```
 
-To fetch alerts for all repositories owned by a user:
+To fetch alerts for all repositories owned by the authenticated user, run it with no flags:
 
 ```sh
-gh list-dependabot-alerts-for-owner-repos --username <username>
+gh list-dependabot-alerts-for-owner-repos
 ```
-
-Specify either `--org` or `--username`. Running the command with both left empty prints the usage help and exits.
 
 ### Options
 
 | Option         | Description              |
 | -------------- | ------------------------ |
 | `--org`        | Target organization name |
-| `--username`   | Target username          |
 | `-h`, `--help` | Show usage help and exit |
 
 ## Example output
@@ -97,6 +94,7 @@ go build && gh list-dependabot-alerts-for-owner-repos <args>
 
 During execution, log lines like `Call <path>` are printed to standard error before each API call.
 A short wait may be inserted beforehand to keep the request rate steady.
-When using `--username`, alerts for each repository are fetched in parallel.
+When `--org` is omitted, the authenticated user's own repositories are targeted.
+In that case, alerts for each repository are fetched in parallel.
 All requests still share the same rate limit.
 The more target repositories there are, the longer the run takes to complete.

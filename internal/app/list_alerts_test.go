@@ -25,16 +25,24 @@ func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
 	}
 }
 
-// registerRepoListHandler registers the "list user's repos" endpoint on mux,
+// registerRepoListHandler registers the "list the authenticated user's own repos" endpoint on mux,
 // returning repos as a single page of non-archived repositories.
-func registerRepoListHandler(t *testing.T, mux *http.ServeMux, username string, repos []string) {
+// Each entry carries a bare "name" plus a "full_name" of "owner/<repo>";
+// ListAlertsForUser reads full_name, so that's the field the assertions below hinge on.
+// It also asserts the request asks for type=owner, so a regression back to the unfiltered
+// GET /user/repos scope (which would also pull in collaborator/org repos) fails loudly.
+func registerRepoListHandler(t *testing.T, mux *http.ServeMux, owner string, repos []string) {
 	t.Helper()
 
-	mux.HandleFunc(fmt.Sprintf("/users/%s/repos", username), func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/user/repos", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("type"); got != "owner" {
+			t.Errorf("GET /user/repos type = %q, want %q", got, "owner")
+		}
+
 		list := make([]map[string]any, len(repos))
 
 		for i, name := range repos {
-			list[i] = map[string]any{"name": name, "archived": false}
+			list[i] = map[string]any{"name": name, "full_name": owner + "/" + name, "archived": false}
 		}
 
 		writeJSON(t, w, list)
@@ -48,20 +56,20 @@ type repoAlertsHandler struct {
 }
 
 // callListAlertsForUser builds an httptest.Server whose mux has the "list user's repos" endpoint registered for repos,
-// plus one dependabot-alerts handler per entry in handlers, then calls listAlertsForUser against it.
+// plus one dependabot-alerts handler per entry in handlers, then calls ListAlertsForUser against it.
 // The server is closed automatically via t.Cleanup.
-func callListAlertsForUser(t *testing.T, username string, repos []string, handlers []repoAlertsHandler) ([]app.SmallDependabotAlert, error) {
+func callListAlertsForUser(t *testing.T, owner string, repos []string, handlers []repoAlertsHandler) ([]app.SmallDependabotAlert, error) {
 	t.Helper()
 
 	mux := http.NewServeMux()
-	registerRepoListHandler(t, mux, username, repos)
+	registerRepoListHandler(t, mux, owner, repos)
 
 	for _, h := range handlers {
-		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", username, h.repo), h.handler)
+		mux.HandleFunc(fmt.Sprintf("/repos/%s/%s/dependabot/alerts", owner, h.repo), h.handler)
 	}
 
 	client := newTestGithubClient(t, mux)
-	return app.ListAlertsForUser(context.Background(), client, username)
+	return app.ListAlertsForUser(context.Background(), client)
 }
 
 // TestListAlertsForUserPreservesRepositoryOrder fetches alerts for repos in parallel,
@@ -70,11 +78,11 @@ func callListAlertsForUser(t *testing.T, username string, repos []string, handle
 // the faster second repo's alerts would land first.
 // Output order must instead always follow repository order, matching the pre-parallelization behavior.
 func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
-	const username = "octocat"
+	const owner = "octocat"
 
 	repos := []string{"slow-repo", "fast-repo"}
 
-	got, err := callListAlertsForUser(t, username, repos, []repoAlertsHandler{
+	got, err := callListAlertsForUser(t, owner, repos, []repoAlertsHandler{
 		{repos[0], func(w http.ResponseWriter, _ *http.Request) {
 			time.Sleep(50 * time.Millisecond)
 			writeJSON(t, w, []map[string]any{{"number": 1}})
@@ -89,8 +97,8 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 
 	// slow-repo's alert must land first despite finishing last, and fast-repo's second despite finishing first.
 	want := []app.SmallDependabotAlert{
-		{Number: new(1), Repository: &app.SmallRepository{FullName: new(username + "/" + repos[0])}},
-		{Number: new(2), Repository: &app.SmallRepository{FullName: new(username + "/" + repos[1])}},
+		{Number: new(1), Repository: &app.SmallRepository{FullName: new(owner + "/" + repos[0])}},
+		{Number: new(2), Repository: &app.SmallRepository{FullName: new(owner + "/" + repos[1])}},
 	}
 
 	if diff := cmp.Diff(want, got); diff != "" {
@@ -104,7 +112,7 @@ func TestListAlertsForUserPreservesRepositoryOrder(t *testing.T) {
 // but a sequential caller can't start repo-b's request until repo-a's finishes: deadlock,
 // caught below as a timeout instead of a hang.
 func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
-	const username = "octocat"
+	const owner = "octocat"
 
 	repos := []string{"repo-a", "repo-b", "repo-c"}
 
@@ -133,7 +141,7 @@ func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
 		}}
 	}
 
-	alerts, err := callListAlertsForUser(t, username, repos, handlers)
+	alerts, err := callListAlertsForUser(t, owner, repos, handlers)
 	if err != nil {
 		t.Fatalf("ListAlertsForUser() error = %v", err)
 	}
@@ -144,13 +152,13 @@ func TestListAlertsForUserFetchesReposConcurrently(t *testing.T) {
 }
 
 // TestListAlertsForUserPropagatesRepoError ensures a failure fetching one repository's alerts
-// still surfaces as an error from listAlertsForUser.
+// still surfaces as an error from ListAlertsForUser.
 func TestListAlertsForUserPropagatesRepoError(t *testing.T) {
-	const username = "octocat"
+	const owner = "octocat"
 
 	repos := []string{"ok-repo", "broken-repo"}
 
-	_, err := callListAlertsForUser(t, username, repos, []repoAlertsHandler{
+	_, err := callListAlertsForUser(t, owner, repos, []repoAlertsHandler{
 		{repos[0], func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(t, w, []map[string]any{{"number": 1}})
 		}},
@@ -327,12 +335,12 @@ func TestFetchAlertsForRepo(t *testing.T) {
 func TestListAlertsForUser(t *testing.T) {
 	t.Run("skips archived and nameless repos, aggregates the rest", func(t *testing.T) {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/users/alice/repos", func(w http.ResponseWriter, _ *http.Request) {
+		mux.HandleFunc("/user/repos", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 
 			if _, err := fmt.Fprint(w, `[
-				{"name":"active","archived":false},
-				{"name":"old","archived":true},
+				{"name":"active","full_name":"alice/active","archived":false},
+				{"name":"old","full_name":"alice/old","archived":true},
 				{"archived":false}
 			]`); err != nil {
 				t.Error(err)
@@ -345,7 +353,7 @@ func TestListAlertsForUser(t *testing.T) {
 
 		client := newTestGithubClient(t, mux)
 
-		got, err := app.ListAlertsForUser(context.Background(), client, "alice")
+		got, err := app.ListAlertsForUser(context.Background(), client)
 		if err != nil {
 			t.Fatalf("ListAlertsForUser() error = %v, want nil", err)
 		}
@@ -362,7 +370,7 @@ func TestListAlertsForUser(t *testing.T) {
 	t.Run("error listing repos is wrapped", func(t *testing.T) {
 		client := newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
-		_, err := app.ListAlertsForUser(context.Background(), client, "alice")
+		_, err := app.ListAlertsForUser(context.Background(), client)
 		if err == nil || !strings.Contains(err.Error(), "Failed to FetchAllPages") {
 			t.Errorf("ListAlertsForUser() error = %v, want it to mention fetchAllPages", err)
 		}
@@ -375,7 +383,7 @@ func TestListAlertsForUser(t *testing.T) {
 
 		client := newTestGithubClient(t, mux)
 
-		_, err := app.ListAlertsForUser(context.Background(), client, "alice")
+		_, err := app.ListAlertsForUser(context.Background(), client)
 		if err == nil || !strings.Contains(err.Error(), "Failed to FetchAlertsForRepo") {
 			t.Errorf("ListAlertsForUser() error = %v, want it to mention fetchAlertsForRepo", err)
 		}

@@ -28,7 +28,6 @@ func Run(ctx context.Context, args []string, out io.Writer, newClient func() (*G
 
 	fs := flag.NewFlagSet("gh-list-dependabot-alerts-for-owner-repos", flag.ContinueOnError)
 	org := fs.String("org", "", "Target organization name")
-	username := fs.String("username", "", "Target username")
 	fs.BoolVar(&help, "help", false, "Show this help and exit")
 	fs.BoolVar(&help, "h", false, "Show this help and exit")
 
@@ -36,7 +35,7 @@ func Run(ctx context.Context, args []string, out io.Writer, newClient func() (*G
 		return errors.Wrap(err, "Failed to fs.Parse")
 	}
 
-	if help || (*org == "" && *username == "") {
+	if help {
 		if _, err := io.WriteString(out, `Usage: gh list-dependabot-alerts-for-owner-repos [options]
 
 A GitHub CLI extension that lists Dependabot alerts (vulnerability alerts from Dependabot).
@@ -66,7 +65,7 @@ Options:
 			return errors.Wrap(err, "Failed to ListAlertsForOrg")
 		}
 	default:
-		smallAlerts, err = ListAlertsForUser(ctx, client, *username)
+		smallAlerts, err = ListAlertsForUser(ctx, client)
 		if err != nil {
 			return errors.Wrap(err, "Failed to ListAlertsForUser")
 		}
