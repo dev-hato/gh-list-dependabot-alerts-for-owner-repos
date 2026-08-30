@@ -1,9 +1,10 @@
-package main
+package app_test
 
 import (
 	"testing"
 	"time"
 
+	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-github/v90/github"
 )
@@ -15,7 +16,7 @@ func TestToSmallDependabotAlert(t *testing.T) {
 
 	tests := map[string]struct {
 		alert github.DependabotAlert
-		want  SmallDependabotAlert
+		want  app.SmallDependabotAlert
 	}{
 		"full alert": {
 			alert: github.DependabotAlert{
@@ -35,14 +36,14 @@ func TestToSmallDependabotAlert(t *testing.T) {
 				// callers are responsible for attaching it themselves.
 				Repository: &github.Repository{FullName: new("octocat/Hello-World")},
 			},
-			want: SmallDependabotAlert{
+			want: app.SmallDependabotAlert{
 				Number: new(3),
 				State:  new("open"),
 				Dependency: &github.Dependency{
 					ManifestPath: new("package-lock.json"),
 					Scope:        new("runtime"),
 				},
-				SecurityAdvisory: &SmallDependabotSecurityAdvisory{
+				SecurityAdvisory: &app.SmallDependabotSecurityAdvisory{
 					Summary:  new("Prototype Pollution in lodash"),
 					Severity: new("high"),
 				},
@@ -57,14 +58,14 @@ func TestToSmallDependabotAlert(t *testing.T) {
 				Number: new(1),
 				State:  new("open"),
 			},
-			want: SmallDependabotAlert{
+			want: app.SmallDependabotAlert{
 				Number: new(1),
 				State:  new("open"),
 			},
 		},
 		"zero-value alert": {
 			alert: github.DependabotAlert{},
-			want:  SmallDependabotAlert{},
+			want:  app.SmallDependabotAlert{},
 		},
 	}
 
@@ -72,10 +73,10 @@ func TestToSmallDependabotAlert(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			got := toSmallDependabotAlert(tt.alert, nil)
+			got := app.ToSmallDependabotAlert(tt.alert, nil)
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("toSmallDependabotAlert() mismatch (-want +got):\n%s", diff)
+				t.Errorf("ToSmallDependabotAlert() mismatch (-want +got):\n%s", diff)
 			}
 
 			// toSmallDependabotAlert must reuse the Dependency pointer, not copy it.

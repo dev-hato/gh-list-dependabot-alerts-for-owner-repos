@@ -1,6 +1,10 @@
-package main
+package app_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
+)
 
 func TestNextPathFromLink(t *testing.T) {
 	t.Parallel()
@@ -36,8 +40,8 @@ func TestNextPathFromLink(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := nextPathFromLink(tt.linkHeader, tt.path); got != tt.want {
-				t.Errorf("nextPathFromLink(%q, %q) = %q, want %q", tt.linkHeader, tt.path, got, tt.want)
+			if got := app.NextPathFromLink(tt.linkHeader, tt.path); got != tt.want {
+				t.Errorf("NextPathFromLink(%q, %q) = %q, want %q", tt.linkHeader, tt.path, got, tt.want)
 			}
 		})
 	}

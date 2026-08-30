@@ -1,4 +1,4 @@
-package main
+package app_test
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cli/go-gh/v2/pkg/api"
+	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 	"golang.org/x/time/rate"
 )
 
@@ -22,11 +23,11 @@ func noWaitLimiter() *rate.Limiter {
 	return rate.NewLimiter(rate.Inf, 0)
 }
 
-// newTestGithubClient returns a *githubClient whose requests are redirected to an httptest.Server running handler,
+// newTestGithubClient returns a *app.GithubClient whose requests are redirected to an httptest.Server running handler,
 // paired with a Waiter that never blocks.
-func newTestGithubClient(t *testing.T, handler http.Handler) *githubClient {
+func newTestGithubClient(t *testing.T, handler http.Handler) *app.GithubClient {
 	t.Helper()
-	return &githubClient{rest: newTestRESTClient(t, handler), limiter: noWaitLimiter()}
+	return &app.GithubClient{Rest: newTestRESTClient(t, handler), Limiter: noWaitLimiter()}
 }
 
 // jsonHandler returns an http.HandlerFunc that responds with status and body as an application/json response.

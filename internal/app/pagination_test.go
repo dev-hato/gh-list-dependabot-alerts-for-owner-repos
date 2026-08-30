@@ -1,4 +1,4 @@
-package main
+package app_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/time/rate"
 )
@@ -50,51 +51,51 @@ func nextPage2Handler(t *testing.T, body string) http.HandlerFunc {
 
 func TestFetchPage(t *testing.T) {
 	tests := map[string]struct {
-		newClient       func(t *testing.T) *githubClient
+		newClient       func(t *testing.T) *app.GithubClient
 		wantErrContains string // empty means no error expected
 		wantErrIs       error  // optional: also checked with errors.Is
-		check           func(t *testing.T, p Page[testItem])
+		check           func(t *testing.T, p app.Page[testItem])
 	}{
 		"success without a next link": {
-			newClient: func(t *testing.T) *githubClient {
+			newClient: func(t *testing.T) *app.GithubClient {
 				return newTestGithubClient(t, jsonHandler(t, http.StatusOK, `[{"number":1},{"number":2}]`))
 			},
-			check: func(t *testing.T, p Page[testItem]) {
-				if diff := cmp.Diff([]testItem{{Number: 1}, {Number: 2}}, p.items); diff != "" {
+			check: func(t *testing.T, p app.Page[testItem]) {
+				if diff := cmp.Diff([]testItem{{Number: 1}, {Number: 2}}, p.Items); diff != "" {
 					t.Errorf("items mismatch (-want +got):\n%s", diff)
 				}
 
-				if p.nextPath != "orgs/foo/dependabot/alerts" {
-					t.Errorf("nextPath = %q, want unchanged path", p.nextPath)
+				if p.NextPath != "orgs/foo/dependabot/alerts" {
+					t.Errorf("nextPath = %q, want unchanged path", p.NextPath)
 				}
 			},
 		},
 		"success with a next link": {
-			newClient: func(t *testing.T) *githubClient {
+			newClient: func(t *testing.T) *app.GithubClient {
 				return newTestGithubClient(t, nextPage2Handler(t, `[{"number":1}]`))
 			},
-			check: func(t *testing.T, p Page[testItem]) {
-				if p.nextPath != "orgs/foo/dependabot/alerts?page=2" {
-					t.Errorf("nextPath = %q, want the next page path", p.nextPath)
+			check: func(t *testing.T, p app.Page[testItem]) {
+				if p.NextPath != "orgs/foo/dependabot/alerts?page=2" {
+					t.Errorf("nextPath = %q, want the next page path", p.NextPath)
 				}
 			},
 		},
 		"HTTP error is wrapped": {
-			newClient: func(t *testing.T) *githubClient {
+			newClient: func(t *testing.T) *app.GithubClient {
 				return newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 			},
 			wantErrContains: "Failed to client.RequestWithContext",
 		},
 		"malformed JSON body is wrapped as a decode error": {
-			newClient: func(t *testing.T) *githubClient {
+			newClient: func(t *testing.T) *app.GithubClient {
 				return newTestGithubClient(t, jsonHandler(t, http.StatusOK, `not json`))
 			},
 			wantErrContains: "Failed to Decode",
 		},
 		"body close error surfaces even on an otherwise successful decode": {
-			newClient: func(t *testing.T) *githubClient {
-				return &githubClient{
-					rest: newRESTClientWithTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			newClient: func(t *testing.T) *app.GithubClient {
+				return &app.GithubClient{
+					Rest: newRESTClientWithTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
 						return &http.Response{
 							StatusCode: http.StatusOK,
 							Header:     http.Header{"Content-Type": []string{"application/json"}},
@@ -102,28 +103,28 @@ func TestFetchPage(t *testing.T) {
 							Request:    req,
 						}, nil
 					})),
-					limiter: noWaitLimiter(),
+					Limiter: noWaitLimiter(),
 				}
 			},
 			wantErrIs: errCloseBoom,
 		},
 		"limiter.Wait failure is wrapped": {
-			newClient: func(t *testing.T) *githubClient {
-				return &githubClient{
-					rest: newTestRESTClient(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+			newClient: func(t *testing.T) *app.GithubClient {
+				return &app.GithubClient{
+					Rest: newTestRESTClient(t, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 						t.Error("the server should not be called when waiting fails")
 					})),
 					// A zero-burst limiter can never admit a single request, so Wait fails immediately.
-					limiter: rate.NewLimiter(0, 0),
+					Limiter: rate.NewLimiter(0, 0),
 				}
 			},
-			wantErrContains: "Failed to limiter.Wait",
+			wantErrContains: "Failed to Limiter.Wait",
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			p, err := fetchPage[testItem](context.Background(), tt.newClient(t), "orgs/foo/dependabot/alerts")
+			p, err := app.FetchPage[testItem](context.Background(), tt.newClient(t), "orgs/foo/dependabot/alerts")
 
 			if tt.wantErrContains == "" && tt.wantErrIs == nil {
 				if err != nil {
@@ -160,7 +161,7 @@ func TestFetchAllPages(t *testing.T) {
 			nextPage2Handler(t, `[{"number":1}]`)(w, r)
 		}))
 
-		got, err := fetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
+		got, err := app.FetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
 		if err != nil {
 			t.Fatalf("fetchAllPages() error = %v, want nil", err)
 		}
@@ -177,8 +178,8 @@ func TestFetchAllPages(t *testing.T) {
 	t.Run("propagates a fetchPage error", func(t *testing.T) {
 		client := newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
-		_, err := fetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
-		if err == nil || !strings.Contains(err.Error(), "Failed to fetchPage") {
+		_, err := app.FetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
+		if err == nil || !strings.Contains(err.Error(), "Failed to FetchPage") {
 			t.Errorf("fetchAllPages() error = %v, want it to mention fetchPage", err)
 		}
 	})

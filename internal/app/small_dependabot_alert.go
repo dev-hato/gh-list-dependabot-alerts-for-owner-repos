@@ -1,4 +1,4 @@
-package main
+package app
 
 import "github.com/google/go-github/v90/github"
 
@@ -21,7 +21,7 @@ type SmallDependabotAlert struct {
 	Repository       *SmallRepository                 `json:"repository,omitempty"`
 }
 
-func toSmallDependabotAlert(alert github.DependabotAlert, repository *SmallRepository) SmallDependabotAlert {
+func ToSmallDependabotAlert(alert github.DependabotAlert, repository *SmallRepository) SmallDependabotAlert {
 	var securityAdvisory *SmallDependabotSecurityAdvisory
 
 	if alert.SecurityAdvisory != nil {
