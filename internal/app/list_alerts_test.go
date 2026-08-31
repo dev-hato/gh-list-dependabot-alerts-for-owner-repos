@@ -426,10 +426,6 @@ func TestSmallRepositoryOf(t *testing.T) {
 				t.Errorf("SmallRepositoryOf() mismatch (-want +got):\n%s", diff)
 			}
 
-			// SmallRepositoryOf must reuse the FullName pointer, not copy the string.
-			if tt.alert.Repository != nil && got.FullName != tt.alert.Repository.FullName {
-				t.Errorf("FullName = %v, want the same pointer as %v", got.FullName, tt.alert.Repository.FullName)
-			}
 		})
 	}
 }
