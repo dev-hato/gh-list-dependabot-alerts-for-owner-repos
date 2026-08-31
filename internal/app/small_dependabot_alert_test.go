@@ -86,3 +86,58 @@ func TestToSmallDependabotAlert(t *testing.T) {
 		})
 	}
 }
+
+func TestToSmallSecurityAdvisory(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		alert github.DependabotAlert
+		want  *app.SmallDependabotSecurityAdvisory
+	}{
+		"nil security advisory": {
+			alert: github.DependabotAlert{},
+			want:  nil,
+		},
+		"summary and severity set": {
+			alert: github.DependabotAlert{
+				SecurityAdvisory: &github.DependabotSecurityAdvisory{
+					Summary:  new("Prototype Pollution in lodash"),
+					Severity: new("high"),
+				},
+			},
+			want: &app.SmallDependabotSecurityAdvisory{
+				Summary:  new("Prototype Pollution in lodash"),
+				Severity: new("high"),
+			},
+		},
+		"advisory present but fields nil": {
+			alert: github.DependabotAlert{
+				SecurityAdvisory: &github.DependabotSecurityAdvisory{},
+			},
+			want: &app.SmallDependabotSecurityAdvisory{},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := app.ToSmallSecurityAdvisory(tt.alert)
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("ToSmallSecurityAdvisory() mismatch (-want +got):\n%s", diff)
+			}
+
+			// ToSmallSecurityAdvisory must reuse the field pointers, not copy the strings.
+			if tt.alert.SecurityAdvisory != nil {
+				if got.Summary != tt.alert.SecurityAdvisory.Summary {
+					t.Errorf("Summary = %v, want the same pointer as %v", got.Summary, tt.alert.SecurityAdvisory.Summary)
+				}
+
+				if got.Severity != tt.alert.SecurityAdvisory.Severity {
+					t.Errorf("Severity = %v, want the same pointer as %v", got.Severity, tt.alert.SecurityAdvisory.Severity)
+				}
+			}
+		})
+	}
+}

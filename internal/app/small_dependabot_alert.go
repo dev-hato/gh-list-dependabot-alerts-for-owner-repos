@@ -22,22 +22,25 @@ type SmallDependabotAlert struct {
 }
 
 func ToSmallDependabotAlert(alert github.DependabotAlert, repository *SmallRepository) SmallDependabotAlert {
-	var securityAdvisory *SmallDependabotSecurityAdvisory
-
-	if alert.SecurityAdvisory != nil {
-		securityAdvisory = &SmallDependabotSecurityAdvisory{
-			Summary:  alert.SecurityAdvisory.Summary,
-			Severity: alert.SecurityAdvisory.Severity,
-		}
-	}
-
 	return SmallDependabotAlert{
 		Number:           alert.Number,
 		State:            alert.State,
 		Dependency:       alert.Dependency,
-		SecurityAdvisory: securityAdvisory,
+		SecurityAdvisory: ToSmallSecurityAdvisory(alert),
 		HTMLURL:          alert.HTMLURL,
 		CreatedAt:        alert.CreatedAt,
 		Repository:       repository,
+	}
+}
+
+// ToSmallSecurityAdvisory trims an alert's security advisory to summary and severity, or nil when it has none.
+func ToSmallSecurityAdvisory(alert github.DependabotAlert) *SmallDependabotSecurityAdvisory {
+	if alert.SecurityAdvisory == nil {
+		return nil
+	}
+
+	return &SmallDependabotSecurityAdvisory{
+		Summary:  alert.SecurityAdvisory.Summary,
+		Severity: alert.SecurityAdvisory.Severity,
 	}
 }
