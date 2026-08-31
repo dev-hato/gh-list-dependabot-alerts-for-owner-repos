@@ -13,6 +13,7 @@ import (
 
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-github/v90/github"
 )
 
 func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
@@ -388,4 +389,47 @@ func TestListAlertsForUser(t *testing.T) {
 			t.Errorf("ListAlertsForUser() error = %v, want it to mention fetchAlertsForRepo", err)
 		}
 	})
+}
+
+func TestSmallRepositoryOf(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		alert github.DependabotAlert
+		want  *app.SmallRepository
+	}{
+		"nil repository": {
+			alert: github.DependabotAlert{},
+			want:  nil,
+		},
+		"repository with full name": {
+			alert: github.DependabotAlert{
+				Repository: &github.Repository{FullName: new("octocat/Hello-World")},
+			},
+			want: &app.SmallRepository{FullName: new("octocat/Hello-World")},
+		},
+		"repository without full name": {
+			alert: github.DependabotAlert{
+				Repository: &github.Repository{},
+			},
+			want: &app.SmallRepository{FullName: nil},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got := app.SmallRepositoryOf(tt.alert)
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("SmallRepositoryOf() mismatch (-want +got):\n%s", diff)
+			}
+
+			// SmallRepositoryOf must reuse the FullName pointer, not copy the string.
+			if tt.alert.Repository != nil && got.FullName != tt.alert.Repository.FullName {
+				t.Errorf("FullName = %v, want the same pointer as %v", got.FullName, tt.alert.Repository.FullName)
+			}
+		})
+	}
 }
