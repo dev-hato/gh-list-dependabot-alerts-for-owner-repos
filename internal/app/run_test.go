@@ -21,6 +21,17 @@ func jsonGithubClient(t *testing.T, status int, body string) (*app.GithubClient,
 	return newTestGithubClient(t, jsonHandler(t, status, body)), nil
 }
 
+// newUserReposClient returns a test client serving the authenticated user's repo list (a single repo "alice/repo") plus
+// that repo's dependabot-alerts endpoint returning alertsJSON.
+func newUserReposClient(t *testing.T, alertsJSON string) *app.GithubClient {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	registerRepoListHandler(t, mux, "alice", []string{"repo"})
+	mux.HandleFunc("/repos/alice/repo/dependabot/alerts", jsonHandler(t, http.StatusOK, alertsJSON))
+	return newTestGithubClient(t, mux)
+}
+
 func TestNewFlagSet(t *testing.T) {
 	t.Parallel()
 
@@ -90,11 +101,7 @@ func TestRun(t *testing.T) {
 		"no --org fetches the authenticated user's alerts and prints them as JSON": {
 			args: nil,
 			newClient: func(t *testing.T) (*app.GithubClient, error) {
-				mux := http.NewServeMux()
-				registerRepoListHandler(t, mux, "alice", []string{"repo"})
-				mux.HandleFunc("/repos/alice/repo/dependabot/alerts", jsonHandler(t, http.StatusOK, `[{"number":7,"state":"open"}]`))
-
-				return &app.GithubClient{Rest: newTestRESTClient(t, mux), Limiter: noWaitLimiter()}, nil
+				return newUserReposClient(t, `[{"number":7,"state":"open"}]`), nil
 			},
 			wantOutputContains: `"number": 7`,
 		},
@@ -271,10 +278,7 @@ func TestListAlerts(t *testing.T) {
 		"empty org fetches the authenticated user's alerts": {
 			org: "",
 			newClient: func(t *testing.T) *app.GithubClient {
-				mux := http.NewServeMux()
-				registerRepoListHandler(t, mux, "alice", []string{"repo"})
-				mux.HandleFunc("/repos/alice/repo/dependabot/alerts", jsonHandler(t, http.StatusOK, `[{"number":7,"state":"open"}]`))
-				return newTestGithubClient(t, mux)
+				return newUserReposClient(t, `[{"number":7,"state":"open"}]`)
 			},
 			want: []app.SmallDependabotAlert{
 				{Number: new(7), State: new("open"), Repository: &app.SmallRepository{FullName: new("alice/repo")}},
