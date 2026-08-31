@@ -74,12 +74,21 @@ func FetchAlertsForRepo(ctx context.Context, client *GithubClient, ownerRepo str
 	return smallAlerts, nil
 }
 
-// ListAlertsForUser fetches alerts for every non-archived repository of username,
+// ListAlertsForUser fetches alerts for every non-archived repository owned by the authenticated user,
 // one repository at a time but in parallel across repositories.
 // The shared rate limiter (Limiter.Wait in pagination.go's FetchPage) keeps the combined request rate in check,
 // so parallelizing here doesn't burst requests against GitHub.
-func ListAlertsForUser(ctx context.Context, client *GithubClient, username string) ([]SmallDependabotAlert, error) {
-	repositories, err := FetchAllPages[github.Repository](ctx, client, fmt.Sprintf("users/%s/repos", username))
+func ListAlertsForUser(ctx context.Context, client *GithubClient) ([]SmallDependabotAlert, error) {
+	// GET /user/repos defaults to affiliation=owner,collaborator,organization_member.
+	// type=owner narrows that to repos the user actually owns,
+	// matching this extension's "owner repos" scope
+	// instead of also pulling in repos the user merely collaborates on or reaches via an org membership.
+	u := url.URL{Path: "user/repos"}
+	query := u.Query()
+	query.Set("type", "owner")
+	u.RawQuery = query.Encode()
+
+	repositories, err := FetchAllPages[github.Repository](ctx, client, u.String())
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to FetchAllPages")
 	}
@@ -87,11 +96,11 @@ func ListAlertsForUser(ctx context.Context, client *GithubClient, username strin
 	targetRepoNames := make([]string, 0, len(repositories))
 
 	for _, repository := range repositories {
-		if (repository.Archived != nil && *repository.Archived) || repository.Name == nil {
+		if (repository.Archived != nil && *repository.Archived) || repository.FullName == nil {
 			continue
 		}
 
-		targetRepoNames = append(targetRepoNames, *repository.Name)
+		targetRepoNames = append(targetRepoNames, *repository.FullName)
 	}
 
 	// Each goroutine writes to its own index,
@@ -100,9 +109,9 @@ func ListAlertsForUser(ctx context.Context, client *GithubClient, username strin
 
 	eg, egCtx := errgroup.WithContext(ctx)
 
-	for i, name := range targetRepoNames {
+	for i, fullName := range targetRepoNames {
 		eg.Go(func() error {
-			repoSmallAlerts, err := FetchAlertsForRepo(egCtx, client, fmt.Sprintf("%s/%s", username, name))
+			repoSmallAlerts, err := FetchAlertsForRepo(egCtx, client, fullName)
 			if err != nil {
 				return errors.Wrap(err, "Failed to FetchAlertsForRepo")
 			}

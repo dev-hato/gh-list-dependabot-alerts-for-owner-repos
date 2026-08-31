@@ -39,8 +39,8 @@ func TestRun(t *testing.T) {
 			},
 			wantOutputContains: `"number": 1`,
 		},
-		"--username fetches user alerts and prints them as JSON": {
-			args: []string{"--username", "alice"},
+		"no --org fetches the authenticated user's alerts and prints them as JSON": {
+			args: nil,
 			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				mux := http.NewServeMux()
 				registerRepoListHandler(t, mux, "alice", []string{"repo"})
@@ -49,14 +49,6 @@ func TestRun(t *testing.T) {
 				return &app.GithubClient{Rest: newTestRESTClient(t, mux), Limiter: noWaitLimiter()}, nil
 			},
 			wantOutputContains: `"number": 7`,
-		},
-		"neither flag set prints usage and exits without error": {
-			args: nil,
-			newClient: func(t *testing.T) (*app.GithubClient, error) {
-				t.Fatal("newClient should not be called")
-				return nil, nil
-			},
-			wantOutputContains: "Usage: gh list-dependabot-alerts-for-owner-repos",
 		},
 		"--help prints usage and exits without error": {
 			args: []string{"--help"},
@@ -110,7 +102,7 @@ func TestRun(t *testing.T) {
 			wantErrContains: "Failed to ListAlertsForOrg",
 		},
 		"listAlertsForUser error is wrapped": {
-			args: []string{"--username", "alice"},
+			args: nil,
 			newClient: func(t *testing.T) (*app.GithubClient, error) {
 				return jsonGithubClient(t, http.StatusInternalServerError, `{"message":"boom"}`)
 			},

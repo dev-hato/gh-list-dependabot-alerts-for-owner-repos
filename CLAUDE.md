@@ -32,14 +32,22 @@ All logic lives in `internal/app` (`package app`), so tests can use an external 
 Every tested identifier is exported from `internal/app`.
 
 The program has two entry paths in `run.go` (`app.Run`).
-They are chosen by the mutually exclusive `--org`/`--username` flags.
+The only path-selecting flag is `--org` (`--help`/`-h` just prints usage).
+Passing it selects the org path.
+Omitting it selects the user path.
+That path always targets repos owned by the `gh`-authenticated account, not an arbitrary username.
+There's no separate flag for the user path; it's simply what happens by default.
 Both paths converge on the same output shape: `[]SmallDependabotAlert`.
 It's JSON-marshaled and printed to stdout.
 
 - **Org path** (`list_alerts.go`, `ListAlertsForOrg`): calls `orgs/{org}/dependabot/alerts`.
   It returns alerts across all repos in the org directly, including repository info per alert.
 - **User path** (`list_alerts.go`, `ListAlertsForUser`): no org-wide endpoint exists for user repos.
-  So this lists the user's repos (`users/{username}/repos`) and skips archived repos.
+  So this lists the authenticated user's own repos (`user/repos`, built inline in `ListAlertsForUser`).
+  It skips archived repos.
+  It passes `type=owner` explicitly.
+  `GET /user/repos` defaults to `affiliation=owner,collaborator,organization_member`.
+  Without `type=owner`, that would also pull in collaborator repos and org-member repos.
   Then it calls `FetchAlertsForRepo` per repository (`repos/{owner}/{repo}/dependabot/alerts`).
   These calls run in parallel across repositories via `golang.org/x/sync/errgroup`.
   Results are written into an index-aligned slice, one slot per repository.
