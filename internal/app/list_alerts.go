@@ -32,16 +32,19 @@ func ListAlertsForOrg(ctx context.Context, client *GithubClient, org string) ([]
 	smallAlerts := make([]SmallDependabotAlert, len(alerts))
 
 	for i, alert := range alerts {
-		var repository *SmallRepository
-
-		if alert.Repository != nil {
-			repository = &SmallRepository{FullName: alert.Repository.FullName}
-		}
-
-		smallAlerts[i] = ToSmallDependabotAlert(alert, repository)
+		smallAlerts[i] = ToSmallDependabotAlert(alert, SmallRepositoryOf(alert))
 	}
 
 	return smallAlerts, nil
+}
+
+// SmallRepositoryOf pulls the repository full name off an org-endpoint alert, or nil when it carries none.
+func SmallRepositoryOf(alert github.DependabotAlert) *SmallRepository {
+	if alert.Repository == nil {
+		return nil
+	}
+
+	return &SmallRepository{FullName: alert.Repository.FullName}
 }
 
 // FetchAlertsForRepo fetches the open Dependabot alerts for a single "owner/repo".
