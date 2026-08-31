@@ -49,7 +49,7 @@ func Run(ctx context.Context, args []string, out io.Writer, newClient func() (*G
 	}
 
 	if opts.Help {
-		return PrintUsage(out, fs)
+		return errors.Wrap(PrintUsage(out, fs), "Failed to PrintUsage")
 	}
 
 	client, err := newClient()
