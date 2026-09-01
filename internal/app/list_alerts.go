@@ -65,11 +65,10 @@ func FetchAlertsForRepo(ctx context.Context, client *GithubClient, ownerRepo str
 	listRepoAlertsURL := OpenAlertsURL(fmt.Sprintf("repos/%s/dependabot/alerts", ownerRepo))
 
 	alerts, err := FetchAllPages[github.DependabotAlert](ctx, client, listRepoAlertsURL)
+	if IsDependabotAlertsDisabled(err) {
+		return nil, nil
+	}
 	if err != nil {
-		if IsDependabotAlertsDisabled(err) {
-			return nil, nil
-		}
-
 		return nil, errors.Wrap(err, "Failed to FetchAllPages")
 	}
 
