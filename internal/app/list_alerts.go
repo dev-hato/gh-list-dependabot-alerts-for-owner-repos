@@ -47,6 +47,18 @@ func SmallRepositoryOf(alert github.DependabotAlert) *SmallRepository {
 	return &SmallRepository{FullName: alert.Repository.FullName}
 }
 
+// IsDependabotAlertsDisabled reports whether err is the 403 GitHub returns
+// when Dependabot alerts are turned off for the repository.
+func IsDependabotAlertsDisabled(err error) bool {
+	var httpErr *api.HTTPError
+
+	if !errors.As(err, &httpErr) {
+		return false
+	}
+
+	return httpErr.StatusCode == 403 && strings.Contains(httpErr.Message, "Dependabot alerts are disabled")
+}
+
 // FetchAlertsForRepo fetches the open Dependabot alerts for a single "owner/repo".
 // It returns (nil, nil) when Dependabot alerts are disabled for the repository.
 func FetchAlertsForRepo(ctx context.Context, client *GithubClient, ownerRepo string) ([]SmallDependabotAlert, error) {
@@ -54,18 +66,11 @@ func FetchAlertsForRepo(ctx context.Context, client *GithubClient, ownerRepo str
 
 	alerts, err := FetchAllPages[github.DependabotAlert](ctx, client, listRepoAlertsURL)
 	if err != nil {
-		// The 403 GitHub returns when Dependabot alerts are turned off for the repository.
-		var httpErr *api.HTTPError
-
-		if !errors.As(err, &httpErr) {
-			return nil, errors.Wrap(err, "Failed to FetchAllPages")
+		if IsDependabotAlertsDisabled(err) {
+			return nil, nil
 		}
 
-		if httpErr.StatusCode != 403 || !strings.Contains(httpErr.Message, "Dependabot alerts are disabled") {
-			return nil, errors.Wrap(err, "Failed to FetchAllPages")
-		}
-
-		return nil, nil
+		return nil, errors.Wrap(err, "Failed to FetchAllPages")
 	}
 
 	smallAlerts := make([]SmallDependabotAlert, len(alerts))
