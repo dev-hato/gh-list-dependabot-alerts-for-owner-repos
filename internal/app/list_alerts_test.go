@@ -14,6 +14,7 @@ import (
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cockroachdb/errors"
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
+	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/slice"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-github/v90/github"
 )
@@ -42,12 +43,9 @@ func registerRepoListHandler(t *testing.T, mux *http.ServeMux, owner string, rep
 			t.Errorf("GET /user/repos type = %q, want %q", got, "owner")
 		}
 
-		list := make([]map[string]any, len(repos))
-
-		for i, name := range repos {
-			list[i] = map[string]any{"name": name, "full_name": owner + "/" + name, "archived": false}
-		}
-
+		list := slice.Map(repos, func(name string) map[string]any {
+			return map[string]any{"name": name, "full_name": owner + "/" + name, "archived": false}
+		})
 		writeJSON(t, w, list)
 	})
 }
