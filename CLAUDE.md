@@ -27,9 +27,12 @@ go build && gh list-dependabot-alerts-for-owner-repos <args>
 ## Architecture
 
 `main.go` (`package main`) is a thin shell: it just calls `app.Run`.
-All logic lives in `internal/app` (`package app`), so tests can use an external `app_test` package.
+All extension logic lives in `internal/app` (`package app`), so tests can use an external `app_test` package.
 `go build` at the repository root still produces the `gh` extension binary.
 Every tested identifier is exported from `internal/app`.
+
+Domain-agnostic helpers live outside `internal/app` so generic code doesn't mix with extension logic.
+`internal/slices` (`package slices`) holds `Map`, the generic slice-transform helper the alert paths use.
 
 The program has two entry paths in `run.go` (`app.Run`).
 The only path-selecting flag is `--org` (`--help`/`-h` just prints usage).
