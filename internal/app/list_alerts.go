@@ -8,6 +8,7 @@ import (
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cockroachdb/errors"
+	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/slices"
 	"github.com/google/go-github/v90/github"
 	"golang.org/x/sync/errgroup"
 )
@@ -29,13 +30,9 @@ func ListAlertsForOrg(ctx context.Context, client *GithubClient, org string) ([]
 		return nil, errors.Wrap(err, "Failed to FetchAllPages")
 	}
 
-	smallAlerts := make([]SmallDependabotAlert, len(alerts))
-
-	for i, alert := range alerts {
-		smallAlerts[i] = ToSmallDependabotAlert(alert, SmallRepositoryOf(alert))
-	}
-
-	return smallAlerts, nil
+	return slices.Map(alerts, func(alert github.DependabotAlert) SmallDependabotAlert {
+		return ToSmallDependabotAlert(alert, SmallRepositoryOf(alert))
+	}), nil
 }
 
 // SmallRepositoryOf pulls the repository full name off an org-endpoint alert, or nil when it carries none.
@@ -73,13 +70,10 @@ func FetchAlertsForRepo(ctx context.Context, client *GithubClient, ownerRepo str
 		return nil, errors.Wrap(err, "Failed to FetchAllPages")
 	}
 
-	smallAlerts := make([]SmallDependabotAlert, len(alerts))
-
-	for i, alert := range alerts {
-		smallAlerts[i] = ToSmallDependabotAlert(alert, &SmallRepository{FullName: &ownerRepo})
-	}
-
-	return smallAlerts, nil
+	repo := &SmallRepository{FullName: &ownerRepo}
+	return slices.Map(alerts, func(alert github.DependabotAlert) SmallDependabotAlert {
+		return ToSmallDependabotAlert(alert, repo)
+	}), nil
 }
 
 // ListAlertsForUser fetches alerts for every non-archived repository owned by the authenticated user,
