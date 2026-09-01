@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/cli/go-gh/v2/pkg/api"
@@ -133,11 +134,5 @@ func ListAlertsForUser(ctx context.Context, client *GithubClient) ([]SmallDepend
 		return nil, errors.Wrap(err, "Failed to Wait")
 	}
 
-	var smallAlerts []SmallDependabotAlert
-
-	for _, repoSmallAlerts := range perRepoAlerts {
-		smallAlerts = append(smallAlerts, repoSmallAlerts...)
-	}
-
-	return smallAlerts, nil
+	return slices.Concat(perRepoAlerts...), nil
 }
