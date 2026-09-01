@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cli/go-gh/v2/pkg/api"
+	"github.com/cockroachdb/errors"
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-github/v90/github"
@@ -328,6 +330,61 @@ func TestFetchAlertsForRepo(t *testing.T) {
 
 			if tt.checkAlerts != nil {
 				tt.checkAlerts(t, alerts)
+			}
+		})
+	}
+}
+
+func TestIsDependabotAlertsDisabled(t *testing.T) {
+	t.Parallel()
+
+	disabled403 := &api.HTTPError{
+		StatusCode: http.StatusForbidden,
+		Message:    "Dependabot alerts are disabled for this repository.",
+	}
+
+	tests := map[string]struct {
+		err  error
+		want bool
+	}{
+		"nil error": {
+			err:  nil,
+			want: false,
+		},
+		"non-HTTP error": {
+			err:  errors.New("boom"),
+			want: false,
+		},
+		"403 with the disabled-alerts message": {
+			err:  disabled403,
+			want: true,
+		},
+		"403 wrapped in another error is still detected": {
+			err:  fmt.Errorf("Failed to FetchAllPages: %w", disabled403),
+			want: true,
+		},
+		"403 with a different message": {
+			err: &api.HTTPError{
+				StatusCode: http.StatusForbidden,
+				Message:    "You are forbidden.",
+			},
+			want: false,
+		},
+		"non-403 status with the disabled-alerts message": {
+			err: &api.HTTPError{
+				StatusCode: http.StatusNotFound,
+				Message:    "Dependabot alerts are disabled for this repository.",
+			},
+			want: false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := app.IsDependabotAlertsDisabled(tt.err); got != tt.want {
+				t.Errorf("IsDependabotAlertsDisabled(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}
