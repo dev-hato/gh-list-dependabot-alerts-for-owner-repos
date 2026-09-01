@@ -1,11 +1,11 @@
-package slices_test
+package slice_test
 
 import (
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/slices"
+	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/slice"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -54,7 +54,7 @@ func TestMap(t *testing.T) {
 			t.Parallel()
 
 			calls := 0
-			got := slices.Map(tt.input, func(n int) string {
+			got := slice.Map(tt.input, func(n int) string {
 				calls++
 				return tt.f(n)
 			})

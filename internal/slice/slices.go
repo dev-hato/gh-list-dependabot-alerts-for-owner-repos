@@ -1,4 +1,4 @@
-package slices
+package slice
 
 // Map returns a new slice holding f(v) for every v in src, in the same order.
 // The result is always non-nil, even when src is empty or nil.
