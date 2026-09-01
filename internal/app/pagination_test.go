@@ -2,12 +2,12 @@ package app_test
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/time/rate"
