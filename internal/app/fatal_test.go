@@ -2,10 +2,10 @@ package app_test
 
 import (
 	"bytes"
-	"errors"
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 )
 
