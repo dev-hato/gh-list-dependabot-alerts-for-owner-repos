@@ -33,7 +33,7 @@ That lets tests use an external `app_test` package.
 Every tested identifier is exported from `internal/app`.
 
 Domain-agnostic helpers live outside `internal/app` so generic code doesn't mix with extension logic.
-`internal/slices` (`package slices`) holds `Map`, the generic slice-transform helper the alert paths use.
+`internal/slice` (`package slice`) holds `Map`, the generic slice-transform helper the alert paths use.
 
 The program has two entry paths in `run.go` (`app.Run`).
 The only path-selecting flag is `--org` (`--help`/`-h` just prints usage).
