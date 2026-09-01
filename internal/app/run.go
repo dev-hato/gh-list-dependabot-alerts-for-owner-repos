@@ -67,11 +67,8 @@ func Run(ctx context.Context, args []string, out io.Writer, newClient func() (*G
 		return errors.Wrap(err, "Failed to json.Marshal")
 	}
 
-	if _, err := fmt.Fprintln(out, string(smallAlertsJSONBytes)); err != nil {
-		return errors.Wrap(err, "Failed to fmt.Fprintln")
-	}
-
-	return nil
+	_, err = fmt.Fprintln(out, string(smallAlertsJSONBytes))
+	return errors.Wrap(err, "Failed to fmt.Fprintln")
 }
 
 // PrintUsage writes the --help/-h usage text and flag defaults to out.
@@ -95,17 +92,9 @@ Options:
 func ListAlerts(ctx context.Context, client *GithubClient, org string) ([]SmallDependabotAlert, error) {
 	if org != "" {
 		smallAlerts, err := ListAlertsForOrg(ctx, client, org)
-		if err != nil {
-			return nil, errors.Wrap(err, "Failed to ListAlertsForOrg")
-		}
-
-		return smallAlerts, nil
+		return smallAlerts, errors.Wrap(err, "Failed to ListAlertsForOrg")
 	}
 
 	smallAlerts, err := ListAlertsForUser(ctx, client)
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed to ListAlertsForUser")
-	}
-
-	return smallAlerts, nil
+	return smallAlerts, errors.Wrap(err, "Failed to ListAlertsForUser")
 }
