@@ -27,7 +27,8 @@ go build && gh list-dependabot-alerts-for-owner-repos <args>
 ## Architecture
 
 `main.go` (`package main`) is a thin shell: it just calls `app.Run`.
-All extension logic lives in `internal/app` (`package app`), so tests can use an external `app_test` package.
+All extension logic lives in `internal/app` (`package app`).
+That lets tests use an external `app_test` package.
 `go build` at the repository root still produces the `gh` extension binary.
 Every tested identifier is exported from `internal/app`.
 
