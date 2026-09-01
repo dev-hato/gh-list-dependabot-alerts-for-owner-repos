@@ -33,7 +33,7 @@ func NewDefaultGithubClient() (*GithubClient, error) {
 // so the registered flags (and thus PrintUsage's output) never drift between the two.
 func NewFlagSet() (*flag.FlagSet, *CLIOptions) {
 	opts := &CLIOptions{}
-	fs := flag.NewFlagSet("gh-list-dependabot-alerts-for-owner-repos", flag.ContinueOnError)
+	fs := flag.NewFlagSet("list-dependabot-alerts-for-owner-repos", flag.ContinueOnError)
 	fs.StringVar(&opts.Org, "org", "", "Target organization name")
 	fs.BoolVar(&opts.Help, "help", false, "Show this help and exit")
 	fs.BoolVar(&opts.Help, "h", false, "Show this help and exit")
@@ -76,13 +76,13 @@ func Run(ctx context.Context, args []string, out io.Writer, newClient func() (*G
 
 // PrintUsage writes the --help/-h usage text and flag defaults to out.
 func PrintUsage(out io.Writer, fs *flag.FlagSet) error {
-	if _, err := io.WriteString(out, `Usage: gh list-dependabot-alerts-for-owner-repos [options]
+	if _, err := io.WriteString(out, fmt.Sprintf(`Usage: gh %s [options]
 
 A GitHub CLI extension that lists Dependabot alerts (vulnerability alerts from Dependabot).
 It covers every repository owned by an organization or a user.
 
 Options:
-`); err != nil {
+`, fs.Name())); err != nil {
 		return errors.Wrap(err, "Failed to io.WriteString")
 	}
 
