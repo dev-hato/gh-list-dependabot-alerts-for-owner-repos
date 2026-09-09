@@ -181,16 +181,19 @@ func TestOpenAlertsURL(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		path string
-		want string
+		scope  app.AlertsScope
+		target string
+		want   string
 	}{
 		"org path": {
-			path: "orgs/foo/dependabot/alerts",
-			want: "orgs/foo/dependabot/alerts?state=open",
+			scope:  app.OrgScope,
+			target: "foo",
+			want:   "orgs/foo/dependabot/alerts?state=open",
 		},
 		"repo path": {
-			path: "repos/foo/bar/dependabot/alerts",
-			want: "repos/foo/bar/dependabot/alerts?state=open",
+			scope:  app.RepoScope,
+			target: "foo/bar",
+			want:   "repos/foo/bar/dependabot/alerts?state=open",
 		},
 	}
 
@@ -198,8 +201,8 @@ func TestOpenAlertsURL(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := app.OpenAlertsURL(tt.path); got != tt.want {
-				t.Errorf("OpenAlertsURL(%q) = %q, want %q", tt.path, got, tt.want)
+			if got := app.OpenAlertsURL(tt.scope, tt.target); got != tt.want {
+				t.Errorf("OpenAlertsURL(%q, %q) = %q, want %q", tt.scope, tt.target, got, tt.want)
 			}
 		})
 	}

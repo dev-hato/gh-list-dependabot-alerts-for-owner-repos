@@ -14,9 +14,23 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// AlertsScope selects which Dependabot alerts endpoint OpenAlertsURL targets:
+// an organization's alerts across all its repos, or a single repository's alerts.
+// It also supplies the leading path segment for that endpoint.
+// Its only valid values are OrgScope and RepoScope.
+type AlertsScope string
+
+const (
+	// OrgScope targets "orgs/{org}/dependabot/alerts".
+	OrgScope AlertsScope = "orgs"
+	// RepoScope targets "repos/{owner}/{repo}/dependabot/alerts".
+	RepoScope AlertsScope = "repos"
+)
+
 // OpenAlertsURL builds a "state=open" filtered request path for a Dependabot alerts endpoint.
-func OpenAlertsURL(path string) string {
-	u := url.URL{Path: path}
+// target is the "{org}" or "{owner}/{repo}" segment that follows the scope.
+func OpenAlertsURL(scope AlertsScope, target string) string {
+	u := url.URL{Path: fmt.Sprintf("%s/%s/dependabot/alerts", scope, target)}
 	query := u.Query()
 	query.Set("state", "open")
 	u.RawQuery = query.Encode()
@@ -24,7 +38,7 @@ func OpenAlertsURL(path string) string {
 }
 
 func ListAlertsForOrg(ctx context.Context, client *GithubClient, org string) ([]SmallDependabotAlert, error) {
-	listOrgAlertsURL := OpenAlertsURL(fmt.Sprintf("orgs/%s/dependabot/alerts", org))
+	listOrgAlertsURL := OpenAlertsURL(OrgScope, org)
 
 	alerts, err := FetchAllPages[github.DependabotAlert](ctx, client, listOrgAlertsURL)
 	if err != nil {
@@ -60,7 +74,7 @@ func IsDependabotAlertsDisabled(err error) bool {
 // FetchAlertsForRepo fetches the open Dependabot alerts for a single "owner/repo".
 // It returns (nil, nil) when Dependabot alerts are disabled for the repository.
 func FetchAlertsForRepo(ctx context.Context, client *GithubClient, ownerRepo string) ([]SmallDependabotAlert, error) {
-	listRepoAlertsURL := OpenAlertsURL(fmt.Sprintf("repos/%s/dependabot/alerts", ownerRepo))
+	listRepoAlertsURL := OpenAlertsURL(RepoScope, ownerRepo)
 
 	alerts, err := FetchAllPages[github.DependabotAlert](ctx, client, listRepoAlertsURL)
 	if IsDependabotAlertsDisabled(err) {
