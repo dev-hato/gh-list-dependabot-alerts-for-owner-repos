@@ -10,7 +10,7 @@ import (
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cockroachdb/errors"
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/slice"
-	"github.com/google/go-github/v90/github"
+	"github.com/google/go-github/v91/github"
 	"golang.org/x/sync/errgroup"
 )
 
