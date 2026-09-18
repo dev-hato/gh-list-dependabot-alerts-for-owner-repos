@@ -32,17 +32,17 @@ func newUserReposClient(t *testing.T, alertsJSON string) *app.GithubClient {
 	return newTestGithubClient(t, mux)
 }
 
-func TestNewFlagSet(t *testing.T) {
+func TestNewCLI(t *testing.T) {
 	t.Parallel()
 
 	t.Run("registers the org, help and h flags", func(t *testing.T) {
 		t.Parallel()
 
-		fs, _ := app.NewFlagSet()
+		cli := app.NewCLI()
 
 		for _, name := range []string{"org", "help", "h"} {
-			if fs.Lookup(name) == nil {
-				t.Errorf("NewFlagSet() flag set is missing the %q flag", name)
+			if cli.FlagSet.Lookup(name) == nil {
+				t.Errorf("NewCLI() flag set is missing the %q flag", name)
 			}
 		}
 	})
@@ -65,14 +65,14 @@ func TestNewFlagSet(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
 
-				fs, got := app.NewFlagSet()
+				cli := app.NewCLI()
 
-				if err := fs.Parse(tt.args); err != nil {
+				if err := cli.FlagSet.Parse(tt.args); err != nil {
 					t.Fatalf("Parse(%q) error = %v", tt.args, err)
 				}
 
-				if diff := cmp.Diff(tt.want, *got); diff != "" {
-					t.Errorf("NewFlagSet() mismatch (-want +got):\n%s", diff)
+				if diff := cmp.Diff(tt.want, *cli.Options); diff != "" {
+					t.Errorf("NewCLI() mismatch (-want +got):\n%s", diff)
 				}
 			})
 		}
@@ -138,7 +138,7 @@ func TestRun(t *testing.T) {
 				return nil, nil
 			},
 			wantErr:         true,
-			wantErrContains: "Failed to fs.Parse",
+			wantErrContains: "Failed to FlagSet.Parse",
 		},
 		"newClient error is wrapped": {
 			args: []string{"--org", "foo"},
@@ -186,9 +186,11 @@ func TestRun(t *testing.T) {
 				out = buf
 			}
 
-			err := app.Run(context.Background(), tt.args, out, func() (*app.GithubClient, error) {
+			a := &app.App{Out: out, NewClient: func() (*app.GithubClient, error) {
 				return tt.newClient(t)
-			})
+			}}
+
+			err := a.Run(context.Background(), tt.args)
 
 			switch {
 			case !tt.wantErr && err != nil:
@@ -236,7 +238,7 @@ func TestPrintUsage(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			fs, _ := app.NewFlagSet()
+			cli := app.NewCLI()
 			out := tt.out
 			var got *bytes.Buffer
 
@@ -245,7 +247,7 @@ func TestPrintUsage(t *testing.T) {
 				out = got
 			}
 
-			err := app.PrintUsage(out, fs)
+			err := cli.PrintUsage(out)
 
 			if tt.wantErrContains != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
@@ -311,7 +313,7 @@ func TestListAlerts(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, err := app.ListAlerts(context.Background(), tt.newClient(t), tt.org)
+			got, err := tt.newClient(t).ListAlerts(context.Background(), tt.org)
 
 			if tt.wantErrContains != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {

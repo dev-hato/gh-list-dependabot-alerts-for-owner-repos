@@ -27,36 +27,46 @@ const (
 	RepoScope AlertsScope = "repos"
 )
 
-// OpenAlertsURL builds a "state=open" filtered request path for a Dependabot alerts endpoint.
+// OpenAlertsURL builds a "state=open" filtered request path for this scope's Dependabot alerts endpoint.
 // target is the "{org}" or "{owner}/{repo}" segment that follows the scope.
-func OpenAlertsURL(scope AlertsScope, target string) string {
-	u := url.URL{Path: fmt.Sprintf("%s/%s/dependabot/alerts", scope, target)}
+func (s AlertsScope) OpenAlertsURL(target string) string {
+	u := url.URL{Path: fmt.Sprintf("%s/%s/dependabot/alerts", s, target)}
 	query := u.Query()
 	query.Set("state", "open")
 	u.RawQuery = query.Encode()
 	return u.String()
 }
 
-func ListAlertsForOrg(ctx context.Context, client *GithubClient, org string) ([]SmallDependabotAlert, error) {
-	listOrgAlertsURL := OpenAlertsURL(OrgScope, org)
+// ListAlerts picks the org path when org is non-empty, and the authenticated-user path otherwise.
+func (c *GithubClient) ListAlerts(ctx context.Context, org string) ([]SmallDependabotAlert, error) {
+	if org != "" {
+		smallAlerts, err := c.ListAlertsForOrg(ctx, org)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to ListAlertsForOrg")
+		}
 
-	alerts, err := FetchAllPages[github.DependabotAlert](ctx, client, listOrgAlertsURL)
+		return smallAlerts, nil
+	}
+
+	smallAlerts, err := c.ListAlertsForUser(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to ListAlertsForUser")
+	}
+
+	return smallAlerts, nil
+}
+
+func (c *GithubClient) ListAlertsForOrg(ctx context.Context, org string) ([]SmallDependabotAlert, error) {
+	listOrgAlertsURL := OrgScope.OpenAlertsURL(org)
+
+	alerts, err := NewPageFetcher[DependabotAlert](c).FetchAllPages(ctx, listOrgAlertsURL)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to FetchAllPages")
 	}
 
-	return slice.Map(alerts, func(alert github.DependabotAlert) SmallDependabotAlert {
-		return ToSmallDependabotAlert(alert, SmallRepositoryOf(alert))
+	return slice.Map(alerts, func(alert DependabotAlert) SmallDependabotAlert {
+		return alert.ToSmall(alert.ToSmallRepository())
 	}), nil
-}
-
-// SmallRepositoryOf pulls the repository full name off an org-endpoint alert, or nil when it carries none.
-func SmallRepositoryOf(alert github.DependabotAlert) *SmallRepository {
-	if alert.Repository == nil {
-		return nil
-	}
-
-	return &SmallRepository{FullName: alert.Repository.FullName}
 }
 
 // IsDependabotAlertsDisabled reports whether err is the 403 GitHub returns
@@ -73,10 +83,10 @@ func IsDependabotAlertsDisabled(err error) bool {
 
 // FetchAlertsForRepo fetches the open Dependabot alerts for a single "owner/repo".
 // It returns (nil, nil) when Dependabot alerts are disabled for the repository.
-func FetchAlertsForRepo(ctx context.Context, client *GithubClient, ownerRepo string) ([]SmallDependabotAlert, error) {
-	listRepoAlertsURL := OpenAlertsURL(RepoScope, ownerRepo)
+func (c *GithubClient) FetchAlertsForRepo(ctx context.Context, ownerRepo string) ([]SmallDependabotAlert, error) {
+	listRepoAlertsURL := RepoScope.OpenAlertsURL(ownerRepo)
 
-	alerts, err := FetchAllPages[github.DependabotAlert](ctx, client, listRepoAlertsURL)
+	alerts, err := NewPageFetcher[DependabotAlert](c).FetchAllPages(ctx, listRepoAlertsURL)
 	if IsDependabotAlertsDisabled(err) {
 		return nil, nil
 	}
@@ -85,8 +95,8 @@ func FetchAlertsForRepo(ctx context.Context, client *GithubClient, ownerRepo str
 	}
 
 	repo := &SmallRepository{FullName: &ownerRepo}
-	return slice.Map(alerts, func(alert github.DependabotAlert) SmallDependabotAlert {
-		return ToSmallDependabotAlert(alert, repo)
+	return slice.Map(alerts, func(alert DependabotAlert) SmallDependabotAlert {
+		return alert.ToSmall(repo)
 	}), nil
 }
 
@@ -94,7 +104,7 @@ func FetchAlertsForRepo(ctx context.Context, client *GithubClient, ownerRepo str
 // one repository at a time but in parallel across repositories.
 // The shared rate limiter (Limiter.Wait in pagination.go's FetchPage) keeps the combined request rate in check,
 // so parallelizing here doesn't burst requests against GitHub.
-func ListAlertsForUser(ctx context.Context, client *GithubClient) ([]SmallDependabotAlert, error) {
+func (c *GithubClient) ListAlertsForUser(ctx context.Context) ([]SmallDependabotAlert, error) {
 	// GET /user/repos defaults to affiliation=owner,collaborator,organization_member.
 	// type=owner narrows that to repos the user actually owns,
 	// matching this extension's "owner repos" scope
@@ -104,7 +114,7 @@ func ListAlertsForUser(ctx context.Context, client *GithubClient) ([]SmallDepend
 	query.Set("type", "owner")
 	u.RawQuery = query.Encode()
 
-	repositories, err := FetchAllPages[github.Repository](ctx, client, u.String())
+	repositories, err := NewPageFetcher[github.Repository](c).FetchAllPages(ctx, u.String())
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to FetchAllPages")
 	}
@@ -127,7 +137,7 @@ func ListAlertsForUser(ctx context.Context, client *GithubClient) ([]SmallDepend
 
 	for i, fullName := range targetRepoNames {
 		eg.Go(func() error {
-			repoSmallAlerts, err := FetchAlertsForRepo(egCtx, client, fullName)
+			repoSmallAlerts, err := c.FetchAlertsForRepo(egCtx, fullName)
 			if err != nil {
 				return errors.Wrap(err, "Failed to FetchAlertsForRepo")
 			}

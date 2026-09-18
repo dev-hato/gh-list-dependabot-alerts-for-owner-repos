@@ -16,7 +16,6 @@ import (
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/slice"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-github/v91/github"
 )
 
 func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
@@ -70,7 +69,7 @@ func callListAlertsForUser(t *testing.T, owner string, repos []string, handlers 
 	}
 
 	client := newTestGithubClient(t, mux)
-	return app.ListAlertsForUser(context.Background(), client)
+	return client.ListAlertsForUser(context.Background())
 }
 
 // TestListAlertsForUserPreservesRepositoryOrder fetches alerts for repos in parallel,
@@ -201,8 +200,8 @@ func TestOpenAlertsURL(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := app.OpenAlertsURL(tt.scope, tt.target); got != tt.want {
-				t.Errorf("OpenAlertsURL(%q, %q) = %q, want %q", tt.scope, tt.target, got, tt.want)
+			if got := tt.scope.OpenAlertsURL(tt.target); got != tt.want {
+				t.Errorf("%q.OpenAlertsURL(%q) = %q, want %q", tt.scope, tt.target, got, tt.want)
 			}
 		})
 	}
@@ -225,7 +224,7 @@ func TestListAlertsForOrg(t *testing.T) {
 			}
 		}))
 
-		got, err := app.ListAlertsForOrg(context.Background(), client, "foo")
+		got, err := client.ListAlertsForOrg(context.Background(), "foo")
 		if err != nil {
 			t.Fatalf("ListAlertsForOrg() error = %v, want nil", err)
 		}
@@ -243,7 +242,7 @@ func TestListAlertsForOrg(t *testing.T) {
 	t.Run("error from fetchAllPages is wrapped", func(t *testing.T) {
 		client := newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
-		_, err := app.ListAlertsForOrg(context.Background(), client, "foo")
+		_, err := client.ListAlertsForOrg(context.Background(), "foo")
 		if err == nil || !strings.Contains(err.Error(), "Failed to FetchAllPages") {
 			t.Errorf("ListAlertsForOrg() error = %v, want it to mention fetchAllPages", err)
 		}
@@ -314,7 +313,7 @@ func TestFetchAlertsForRepo(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			client := newTestGithubClient(t, tt.handler(t))
-			alerts, err := app.FetchAlertsForRepo(context.Background(), client, "foo/bar")
+			alerts, err := client.FetchAlertsForRepo(context.Background(), "foo/bar")
 
 			switch {
 			case !tt.wantErr && err != nil:
@@ -412,7 +411,7 @@ func TestListAlertsForUser(t *testing.T) {
 
 		client := newTestGithubClient(t, mux)
 
-		got, err := app.ListAlertsForUser(context.Background(), client)
+		got, err := client.ListAlertsForUser(context.Background())
 		if err != nil {
 			t.Fatalf("ListAlertsForUser() error = %v, want nil", err)
 		}
@@ -429,7 +428,7 @@ func TestListAlertsForUser(t *testing.T) {
 	t.Run("error listing repos is wrapped", func(t *testing.T) {
 		client := newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
-		_, err := app.ListAlertsForUser(context.Background(), client)
+		_, err := client.ListAlertsForUser(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "Failed to FetchAllPages") {
 			t.Errorf("ListAlertsForUser() error = %v, want it to mention fetchAllPages", err)
 		}
@@ -442,48 +441,9 @@ func TestListAlertsForUser(t *testing.T) {
 
 		client := newTestGithubClient(t, mux)
 
-		_, err := app.ListAlertsForUser(context.Background(), client)
+		_, err := client.ListAlertsForUser(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "Failed to FetchAlertsForRepo") {
 			t.Errorf("ListAlertsForUser() error = %v, want it to mention fetchAlertsForRepo", err)
 		}
 	})
-}
-
-func TestSmallRepositoryOf(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]struct {
-		alert github.DependabotAlert
-		want  *app.SmallRepository
-	}{
-		"nil repository": {
-			alert: github.DependabotAlert{},
-			want:  nil,
-		},
-		"repository with full name": {
-			alert: github.DependabotAlert{
-				Repository: &github.Repository{FullName: new("octocat/Hello-World")},
-			},
-			want: &app.SmallRepository{FullName: new("octocat/Hello-World")},
-		},
-		"repository without full name": {
-			alert: github.DependabotAlert{
-				Repository: &github.Repository{},
-			},
-			want: &app.SmallRepository{FullName: nil},
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			got := app.SmallRepositoryOf(tt.alert)
-
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("SmallRepositoryOf() mismatch (-want +got):\n%s", diff)
-			}
-
-		})
-	}
 }
