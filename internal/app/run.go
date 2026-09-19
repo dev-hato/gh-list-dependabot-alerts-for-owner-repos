@@ -85,7 +85,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 
 	client, err := a.NewClient()
 	if err != nil {
-		return errors.Wrap(err, "Failed to NewClient")
+		return errors.Wrap(err, "Failed to newClient")
 	}
 
 	smallAlerts, err := client.ListAlerts(ctx, cli.Options.Org)
