@@ -124,7 +124,7 @@ func TestFetchPage(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			p, err := app.FetchPage[testItem](context.Background(), tt.newClient(t), "orgs/foo/dependabot/alerts")
+			p, err := app.NewPageFetcher[testItem](tt.newClient(t)).FetchPage(context.Background(), "orgs/foo/dependabot/alerts")
 
 			if tt.wantErrContains == "" && tt.wantErrIs == nil {
 				if err != nil {
@@ -161,7 +161,7 @@ func TestFetchAllPages(t *testing.T) {
 			nextPage2Handler(t, `[{"number":1}]`)(w, r)
 		}))
 
-		got, err := app.FetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
+		got, err := app.NewPageFetcher[testItem](client).FetchAllPages(context.Background(), "orgs/foo/dependabot/alerts")
 		if err != nil {
 			t.Fatalf("fetchAllPages() error = %v, want nil", err)
 		}
@@ -178,7 +178,7 @@ func TestFetchAllPages(t *testing.T) {
 	t.Run("propagates a fetchPage error", func(t *testing.T) {
 		client := newTestGithubClient(t, jsonHandler(t, http.StatusInternalServerError, `{"message":"boom"}`))
 
-		_, err := app.FetchAllPages[testItem](context.Background(), client, "orgs/foo/dependabot/alerts")
+		_, err := app.NewPageFetcher[testItem](client).FetchAllPages(context.Background(), "orgs/foo/dependabot/alerts")
 		if err == nil || !strings.Contains(err.Error(), "Failed to FetchPage") {
 			t.Errorf("fetchAllPages() error = %v, want it to mention fetchPage", err)
 		}

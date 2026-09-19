@@ -8,9 +8,12 @@ import (
 )
 
 func main() {
-	if err := app.Run(context.Background(), os.Args[1:], os.Stdout, app.NewDefaultGithubClient); err != nil {
-		if fatalErr := app.Fatal(err, os.Stderr, os.Exit); fatalErr != nil {
-			panic(fatalErr)
+	a := &app.App{Out: os.Stdout, NewClient: app.NewDefaultGithubClient}
+
+	if err := a.Run(context.Background(), os.Args[1:]); err != nil {
+		reporter := &app.FatalReporter{Out: os.Stderr, Exit: os.Exit}
+		if reportErr := reporter.Report(err); reportErr != nil {
+			panic(reportErr)
 		}
 	}
 }
