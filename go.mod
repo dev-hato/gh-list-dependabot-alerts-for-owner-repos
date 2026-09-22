@@ -3,11 +3,10 @@ module github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos
 go 1.26.4
 
 require (
-	github.com/cli/go-gh/v2 v2.16.0
+	github.com/cli/go-gh/v2 v2.16.1
 	github.com/cockroachdb/errors v1.14.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-github/v91 v91.0.0
-	github.com/google/go-github/v92 v92.0.0
 	golang.org/x/sync v0.23.0
 	golang.org/x/time v0.16.0
 )
