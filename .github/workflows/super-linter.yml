@@ -60,6 +60,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BRANCH: main
           LINTER_RULES_PATH: .
+          # set_path.sh runs `bun install` in the workspace,
+          # so exclude third-party code (e.g. flatted's bundled Go module) from linting.
+          FILTER_REGEX_EXCLUDE: (^|/)node_modules/
           VALIDATE_BIOME_FORMAT: false
           # The GO linter passes golangci-lint an explicit file list,
           # which fails ("named files must all be in one directory") now that Go sources live n
