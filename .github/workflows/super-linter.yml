@@ -61,7 +61,9 @@ jobs:
           DEFAULT_BRANCH: main
           LINTER_RULES_PATH: .
           # set_path.sh runs `bun install` in the workspace,
-          # so exclude third-party code (e.g. flatted's bundled Go module) from linting.
+          # so exclude third-party code from linting.
+          # GO_MODULES lints the whole module regardless of this filter,
+          # so .golangci.yml also excludes node_modules.
           FILTER_REGEX_EXCLUDE: (^|/)node_modules/
           VALIDATE_BIOME_FORMAT: false
           # The GO linter passes golangci-lint an explicit file list,
