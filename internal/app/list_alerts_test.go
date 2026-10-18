@@ -194,14 +194,77 @@ func TestOpenAlertsURL(t *testing.T) {
 			target: "foo/bar",
 			want:   "repos/foo/bar/dependabot/alerts?state=open",
 		},
+		"org with a hyphen and an Enterprise Managed User underscore": {
+			scope:  app.OrgScope,
+			target: "my-org_ent",
+			want:   "orgs/my-org_ent/dependabot/alerts?state=open",
+		},
+		"repo name starting with a dot": {
+			scope:  app.RepoScope,
+			target: "foo/.github",
+			want:   "repos/foo/.github/dependabot/alerts?state=open",
+		},
+		"repo name with a dot inside": {
+			scope:  app.RepoScope,
+			target: "foo_ent/bar.js",
+			want:   "repos/foo_ent/bar.js/dependabot/alerts?state=open",
+		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := tt.scope.OpenAlertsURL(tt.target); got != tt.want {
+			got, err := tt.scope.OpenAlertsURL(tt.target)
+			if err != nil {
+				t.Fatalf("%q.OpenAlertsURL(%q) error = %v, want nil", tt.scope, tt.target, err)
+			}
+
+			if got != tt.want {
 				t.Errorf("%q.OpenAlertsURL(%q) = %q, want %q", tt.scope, tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOpenAlertsURLRejectsHostileTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		scope  app.AlertsScope
+		target string
+	}{
+		"org with a slash":          {scope: app.OrgScope, target: "foo/../../user"},
+		"org with dot-dot":          {scope: app.OrgScope, target: ".."},
+		"org with a query":          {scope: app.OrgScope, target: "foo?state=dismissed"},
+		"org with a fragment":       {scope: app.OrgScope, target: "foo#bar"},
+		"org with a percent escape": {scope: app.OrgScope, target: "foo%2F..%2Fuser"},
+		"org with a control char":   {scope: app.OrgScope, target: "foo\x1b[2J"},
+		"empty org":                 {scope: app.OrgScope, target: ""},
+		"repo without a slash":      {scope: app.RepoScope, target: "foo"},
+		"repo with extra segments":  {scope: app.RepoScope, target: "foo/bar/../../user"},
+		"repo named dot-dot":        {scope: app.RepoScope, target: "foo/.."},
+		"repo named dot":            {scope: app.RepoScope, target: "foo/."},
+		"unknown scope":             {scope: app.AlertsScope("user"), target: "foo"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := tt.scope.OpenAlertsURL(tt.target)
+			if err == nil {
+				t.Fatalf("%q.OpenAlertsURL(%q) = %q, want an error", tt.scope, tt.target, got)
+			}
+
+			// The target is quoted, so control characters in it are escaped rather than printed raw.
+			wantErr := fmt.Sprintf("Invalid %s target %q", tt.scope, tt.target)
+			if err.Error() != wantErr {
+				t.Errorf("%q.OpenAlertsURL(%q) error = %q, want %q", tt.scope, tt.target, err.Error(), wantErr)
+			}
+
+			if got != "" {
+				t.Errorf("%q.OpenAlertsURL(%q) = %q, want an empty path", tt.scope, tt.target, got)
 			}
 		})
 	}
@@ -245,6 +308,17 @@ func TestListAlertsForOrg(t *testing.T) {
 		_, err := client.ListAlertsForOrg(context.Background(), "foo")
 		if err == nil || !strings.Contains(err.Error(), "Failed to FetchAllPages") {
 			t.Errorf("ListAlertsForOrg() error = %v, want it to mention fetchAllPages", err)
+		}
+	})
+
+	t.Run("an org that would leave the org endpoint is rejected before any request", func(t *testing.T) {
+		client := newTestGithubClient(t, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			t.Errorf("unexpected request to %q", r.URL.Path)
+		}))
+
+		_, err := client.ListAlertsForOrg(context.Background(), "foo/../../user")
+		if err == nil || !strings.Contains(err.Error(), "Failed to OpenAlertsURL") {
+			t.Errorf("ListAlertsForOrg() error = %v, want it to mention OpenAlertsURL", err)
 		}
 	})
 }
@@ -444,6 +518,24 @@ func TestListAlertsForUser(t *testing.T) {
 		_, err := client.ListAlertsForUser(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "Failed to FetchAlertsForRepo") {
 			t.Errorf("ListAlertsForUser() error = %v, want it to mention fetchAlertsForRepo", err)
+		}
+	})
+
+	t.Run("a repo full name that would leave the repo endpoint is rejected before any request", func(t *testing.T) {
+		mux := http.NewServeMux()
+		mux.HandleFunc(
+			"/user/repos",
+			jsonHandler(t, http.StatusOK, `[{"full_name":"alice/x/../../../user","archived":false}]`),
+		)
+		mux.HandleFunc("/", func(_ http.ResponseWriter, r *http.Request) {
+			t.Errorf("unexpected request to %q", r.URL.Path)
+		})
+
+		client := newTestGithubClient(t, mux)
+
+		_, err := client.ListAlertsForUser(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "Failed to OpenAlertsURL") {
+			t.Errorf("ListAlertsForUser() error = %v, want it to mention OpenAlertsURL", err)
 		}
 	})
 }
