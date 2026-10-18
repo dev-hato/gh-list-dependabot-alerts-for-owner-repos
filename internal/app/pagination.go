@@ -13,6 +13,13 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	// MaxPages caps how many pages FetchAllPages follows, so a response can't paginate forever.
+	MaxPages = 10000
+	// MaxPageBytes caps how much of one response body FetchPage decodes, so a response can't exhaust memory.
+	MaxPageBytes = 64 << 20
+)
+
 type Page[T any] struct {
 	Items    []T
 	NextPath string
@@ -58,11 +65,17 @@ func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T],
 		}
 	}(httpResponse.Body)
 
-	if err := json.NewDecoder(httpResponse.Body).Decode(&p.Items); err != nil {
+	// A body over MaxPageBytes is cut short, so it fails to decode instead of being read in full.
+	if err := json.NewDecoder(io.LimitReader(httpResponse.Body, MaxPageBytes)).Decode(&p.Items); err != nil {
 		return p, errors.Wrap(err, "Failed to Decode")
 	}
 
-	p.NextPath = LinkHeader(httpResponse.Header.Get("Link")).NextPath(path)
+	nextPath, err := LinkHeader(httpResponse.Header.Get("Link")).NextPath(path)
+	if err != nil {
+		return p, errors.Wrap(err, "Failed to NextPath")
+	}
+
+	p.NextPath = nextPath
 
 	return p, nil
 }
@@ -70,7 +83,21 @@ func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T],
 func (f *PageFetcher[T]) FetchAllPages(ctx context.Context, path string) ([]T, error) {
 	var allItems []T
 
-	for {
+	// The next links come from responses, so guard against a loop back to an earlier page as well as endless new ones.
+	visited := make(map[string]struct{})
+
+	// Count fetched pages rather than len(visited), so the cap still holds if the loop check ever misses a cycle.
+	for pages := 0; ; pages++ {
+		if _, ok := visited[path]; ok {
+			return nil, errors.Newf("Pagination loops back to %q", path)
+		}
+
+		if pages == MaxPages {
+			return nil, errors.Newf("Pagination exceeds %d pages", MaxPages)
+		}
+
+		visited[path] = struct{}{}
+
 		p, err := f.FetchPage(ctx, path)
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to FetchPage")

@@ -40,8 +40,33 @@ func TestLinkHeaderNextPath(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := app.LinkHeader(tt.linkHeader).NextPath(tt.path); got != tt.want {
+			got, err := app.LinkHeader(tt.linkHeader).NextPath(tt.path)
+			if err != nil {
+				t.Fatalf("LinkHeader(%q).NextPath(%q) error = %v, want nil", tt.linkHeader, tt.path, err)
+			}
+
+			if got != tt.want {
 				t.Errorf("LinkHeader(%q).NextPath(%q) = %q, want %q", tt.linkHeader, tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLinkHeaderNextPathRejectsHostileLinks(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"absolute URL to another host":      `<https://api.github.com/https://example.com/alerts?page=2>; rel="next"`,
+		"plain-HTTP URL to another host":    `<https://api.github.com/http://example.com/alerts?page=2>; rel="next"`,
+		"control character in the next URL": "<https://api.github.com/orgs/foo/dependabot/alerts?page=2\x1b[2J>; rel=\"next\"",
+	}
+
+	for name, linkHeader := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if got, err := app.LinkHeader(linkHeader).NextPath("orgs/foo/dependabot/alerts"); err == nil {
+				t.Errorf("LinkHeader(%q).NextPath() = %q, want an error", linkHeader, got)
 			}
 		})
 	}

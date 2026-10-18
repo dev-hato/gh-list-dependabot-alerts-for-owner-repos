@@ -1,11 +1,14 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
@@ -14,6 +17,9 @@ import (
 )
 
 var errCloseBoom = errors.New("close boom")
+
+// paginationGuardTimeout bounds the pagination-guard tests, which would otherwise loop forever if a guard regressed.
+const paginationGuardTimeout = 30 * time.Second
 
 type testItem struct {
 	Number int `json:"number"`
@@ -183,4 +189,87 @@ func TestFetchAllPages(t *testing.T) {
 			t.Errorf("fetchAllPages() error = %v, want it to mention fetchPage", err)
 		}
 	})
+
+	t.Run("a next link back to an earlier page is an error", func(t *testing.T) {
+		var calls int
+
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+
+			if r.URL.Query().Get("page") == "2" {
+				w.Header().Set("Link", `<https://api.github.com/orgs/foo/dependabot/alerts>; rel="next"`)
+				jsonHandler(t, http.StatusOK, `[{"number":2}]`)(w, r)
+				return
+			}
+
+			nextPage2Handler(t, `[{"number":1}]`)(w, r)
+		}))
+
+		// Without the guard this would paginate forever, so bound it to fail fast instead of hanging.
+		ctx, cancel := context.WithTimeout(t.Context(), paginationGuardTimeout)
+		defer cancel()
+
+		_, err := app.NewPageFetcher[testItem](client).FetchAllPages(ctx, "orgs/foo/dependabot/alerts")
+		if err == nil || !strings.Contains(err.Error(), "Pagination loops back") {
+			t.Errorf("fetchAllPages() error = %v, want it to mention the loop", err)
+		}
+
+		if calls != 2 {
+			t.Errorf("server was called %d times, want 2", calls)
+		}
+	})
+
+	t.Run("endless new next links stop at MaxPages", func(t *testing.T) {
+		var calls int
+
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.Header().Set(
+				"Link",
+				fmt.Sprintf(`<https://api.github.com/orgs/foo/dependabot/alerts?page=%d>; rel="next"`, calls+1),
+			)
+			jsonHandler(t, http.StatusOK, `[]`)(w, r)
+		}))
+
+		// Without the guard this would paginate forever, so bound it to fail fast instead of hanging.
+		ctx, cancel := context.WithTimeout(t.Context(), paginationGuardTimeout)
+		defer cancel()
+
+		_, err := app.NewPageFetcher[testItem](client).FetchAllPages(ctx, "orgs/foo/dependabot/alerts")
+		if err == nil || !strings.Contains(err.Error(), "Pagination exceeds") {
+			t.Errorf("fetchAllPages() error = %v, want it to mention the page cap", err)
+		}
+
+		if calls != app.MaxPages {
+			t.Errorf("server was called %d times, want %d", calls, app.MaxPages)
+		}
+	})
+}
+
+func TestFetchPageRejectsOversizedBody(t *testing.T) {
+	client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte("[")); err != nil {
+			t.Error(err)
+			return
+		}
+
+		chunk := bytes.Repeat([]byte(`{"number":1},`), 1<<16)
+
+		for written := 0; written <= app.MaxPageBytes; written += len(chunk) {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+
+		if _, err := w.Write([]byte(`{"number":1}]`)); err != nil {
+			return
+		}
+	}))
+
+	_, err := app.NewPageFetcher[testItem](client).FetchPage(t.Context(), "orgs/foo/dependabot/alerts")
+	if err == nil || !strings.Contains(err.Error(), "Failed to Decode") {
+		t.Errorf("FetchPage() error = %v, want it to mention Decode", err)
+	}
 }
