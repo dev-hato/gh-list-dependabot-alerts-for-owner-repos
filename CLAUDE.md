@@ -5,7 +5,6 @@ This file provides guidance to Claude Code (claude.ai/code) for this repository.
 ## Overview
 
 This is a `gh` (GitHub CLI) extension, written in Go.
-It fetches Dependabot alerts for every repository owned by a GitHub organization or user.
 It prints the results as a JSON array on stdout.
 It authenticates via the `gh` CLI's own credentials.
 This codebase does no separate token handling.
@@ -26,20 +25,15 @@ go build && gh list-dependabot-alerts-for-owner-repos <args>
 
 ## Architecture
 
-`main.go` (`package main`) is a thin shell: it builds an `app.App` and calls its `Run` method.
 All extension logic lives in `internal/app` (`package app`).
 That lets tests use an external `app_test` package.
-`go build` at the repository root still produces the `gh` extension binary.
 Every tested identifier is exported from `internal/app`.
 
 Domain-agnostic helpers live outside `internal/app` so generic code doesn't mix with extension logic.
-`internal/slice` (`package slice`) holds `Map`, the generic slice-transform helper the alert paths use.
 
 **One-argument rule**: every method takes at most one argument besides `context.Context`.
 It also returns at most one value besides `error`/`ok`.
 That's why most of this package's logic hangs off receivers instead of parameters.
-Those receivers are `GithubClient`, `App`, `CLI` and `AlertsScope`.
-They're also `LinkHeader`, `DependabotAlert`, `PageFetcher[T]` and `FatalReporter`.
 Values that always travel together are bundled into one struct rather than passed side by side.
 The single exception is `slice.Map`, which takes a slice and a function.
 Go forbids a method from declaring its own type parameter.
@@ -85,8 +79,6 @@ When there's no next link, it returns the current path unchanged.
 `FetchAllPages` uses that as its loop-termination signal.
 
 **Rate limiting** (`rate_limiter.go`): a package-level `limiter` throttles outgoing requests.
-It's a `golang.org/x/time/rate.Limiter`, built via `rate.NewLimiter(5, 1)`.
-That's 5 requests per second, with a burst size of one.
 `PageFetcher.FetchPage` (`pagination.go`) calls `Limiter.Wait(ctx)` before every single HTTP request.
 That blocks until the limiter admits the request.
 `client` and `limiter` are bundled into one `*GithubClient` (`pagination.go`).
@@ -117,9 +109,6 @@ It is documented in the readme for users who see the run appear to hang.
 It has identical fields and JSON tags, so alert pages decode straight into it.
 That's what lets the conversions be methods.
 The result is `SmallDependabotAlert`.
-It keeps only the fields the extension's users need.
-That's number, state, and dependency.
-It also keeps security advisory summary/severity, HTML URL, created-at, and repository full name.
 `DependabotAlert.ToSmall` does the field mapping, taking the repository to attach as its one argument.
 The org and user paths each attach `Repository` slightly differently.
 The org endpoint already includes it per-alert, so the org path passes `alert.ToSmallRepository()`.
@@ -127,10 +116,6 @@ The user path has to backfill it from the loop variable.
 
 **Error handling** (`fatal.go`): errors are wrapped with `github.com/cockroachdb/errors` throughout.
 It uses `errors.Wrap(err, "Failed to ...")` calls to build a stack-trace-annotated chain.
-`main` calls `FatalReporter.Report(err)` on any top-level failure.
-`FatalReporter` holds the writer and the exit func as fields.
-So tests inject a buffer and a non-exiting exit.
-That prints `%+v` (full chain + stack) to stderr and exits 1.
 
 ## Notes
 
