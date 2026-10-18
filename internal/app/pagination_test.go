@@ -55,6 +55,40 @@ func nextPage2Handler(t *testing.T, body string) http.HandlerFunc {
 	}
 }
 
+// twoPageHandler returns an http.HandlerFunc serving page 1 (linking to page 2) and page 2, counting requests in calls.
+// page2Link is page 2's Link header; empty means page 2 is the last page.
+func twoPageHandler(t *testing.T, calls *int, page2Link string) http.HandlerFunc {
+	t.Helper()
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		*calls++
+
+		if r.URL.Query().Get("page") == "2" {
+			if page2Link != "" {
+				w.Header().Set("Link", page2Link)
+			}
+
+			jsonHandler(t, http.StatusOK, `[{"number":2}]`)(w, r)
+			return
+		}
+
+		nextPage2Handler(t, `[{"number":1}]`)(w, r)
+	}
+}
+
+// fetchAllPagesWithinGuardTimeout runs FetchAllPages against client under paginationGuardTimeout.
+// The pagination-guard tests use it because, without the guard, FetchAllPages would paginate forever,
+// so the deadline makes them fail fast instead of hanging.
+func fetchAllPagesWithinGuardTimeout(t *testing.T, client *app.GithubClient) error {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(t.Context(), paginationGuardTimeout)
+	defer cancel()
+
+	_, err := app.NewPageFetcher[testItem](client).FetchAllPages(ctx, "orgs/foo/dependabot/alerts")
+	return err
+}
+
 func TestFetchPage(t *testing.T) {
 	tests := map[string]struct {
 		newClient       func(t *testing.T) *app.GithubClient
@@ -156,16 +190,7 @@ func TestFetchAllPages(t *testing.T) {
 	t.Run("aggregates items across pages", func(t *testing.T) {
 		var calls int
 
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls++
-
-			if r.URL.Query().Get("page") == "2" {
-				jsonHandler(t, http.StatusOK, `[{"number":2}]`)(w, r)
-				return
-			}
-
-			nextPage2Handler(t, `[{"number":1}]`)(w, r)
-		}))
+		client := newTestGithubClient(t, twoPageHandler(t, &calls, ""))
 
 		got, err := app.NewPageFetcher[testItem](client).FetchAllPages(context.Background(), "orgs/foo/dependabot/alerts")
 		if err != nil {
@@ -193,23 +218,12 @@ func TestFetchAllPages(t *testing.T) {
 	t.Run("a next link back to an earlier page is an error", func(t *testing.T) {
 		var calls int
 
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls++
+		client := newTestGithubClient(
+			t,
+			twoPageHandler(t, &calls, `<https://api.github.com/orgs/foo/dependabot/alerts>; rel="next"`),
+		)
 
-			if r.URL.Query().Get("page") == "2" {
-				w.Header().Set("Link", `<https://api.github.com/orgs/foo/dependabot/alerts>; rel="next"`)
-				jsonHandler(t, http.StatusOK, `[{"number":2}]`)(w, r)
-				return
-			}
-
-			nextPage2Handler(t, `[{"number":1}]`)(w, r)
-		}))
-
-		// Without the guard this would paginate forever, so bound it to fail fast instead of hanging.
-		ctx, cancel := context.WithTimeout(t.Context(), paginationGuardTimeout)
-		defer cancel()
-
-		_, err := app.NewPageFetcher[testItem](client).FetchAllPages(ctx, "orgs/foo/dependabot/alerts")
+		err := fetchAllPagesWithinGuardTimeout(t, client)
 		if err == nil || !strings.Contains(err.Error(), "Pagination loops back") {
 			t.Errorf("fetchAllPages() error = %v, want it to mention the loop", err)
 		}
@@ -231,11 +245,7 @@ func TestFetchAllPages(t *testing.T) {
 			jsonHandler(t, http.StatusOK, `[]`)(w, r)
 		}))
 
-		// Without the guard this would paginate forever, so bound it to fail fast instead of hanging.
-		ctx, cancel := context.WithTimeout(t.Context(), paginationGuardTimeout)
-		defer cancel()
-
-		_, err := app.NewPageFetcher[testItem](client).FetchAllPages(ctx, "orgs/foo/dependabot/alerts")
+		err := fetchAllPagesWithinGuardTimeout(t, client)
 		if err == nil || !strings.Contains(err.Error(), "Pagination exceeds") {
 			t.Errorf("fetchAllPages() error = %v, want it to mention the page cap", err)
 		}
