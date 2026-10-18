@@ -152,8 +152,11 @@ Working correctly is not enough.
     Also keep `bun install --ignore-scripts` there.
 - Pin new external Actions to full commit SHAs.
   Avoid dependency versions that were published only very recently.
-- Add tests that confirm attack inputs do not change the result.
-  For example, an `--org` value containing `/` or `..`, or a `Link` header pointing to another host.
+- When fixing a security problem, always write a test that confirms the problem no longer reproduces.
+  - Feed it the input an attack would use, and check that the result doesn't change.
+    For example, the fixed code now rejects that input.
+    Such inputs include an `--org` value containing `/` or `..`, or a `Link` header pointing to another host.
+  - Confirm that the test fails against the code before the fix, so it actually detects the problem.
 - If a vulnerability is found during review, do not write the details in a public issue or PR.
   Report it privately first.
 
