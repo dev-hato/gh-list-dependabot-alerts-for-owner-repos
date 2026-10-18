@@ -129,6 +129,34 @@ The user path has to backfill it from the loop variable.
 **Error handling** (`fatal.go`): errors are wrapped with `github.com/cockroachdb/errors` throughout.
 It uses `errors.Wrap(err, "Failed to ...")` calls to build a stack-trace-annotated chain.
 
+## Security
+
+This extension sends requests with the user's `gh` credentials and prints the API responses.
+CI jobs here also run with write-capable tokens.
+When implementing or reviewing, check that the change withstands malicious input and operations.
+Working correctly is not enough.
+
+- Treat the `--org` value and every API response as attacker-controlled.
+  That includes repository names, alert fields, and the `Link` header.
+- Escape values before putting them into an API path.
+  Never let `/`, `..`, `?` or `#` in a value switch the request to a different endpoint.
+- Never send the credentials outside `api.github.com`.
+  `LinkHeader.NextPath` accepts only `https://api.github.com/` links on purpose; keep that restriction.
+- Hostile responses must fail safely with an error.
+  They must never cause panics, endless pagination, or unbounded memory use.
+- Do not leak tokens or response bodies in logs, error messages, or the `Call <path>` progress line.
+- In GitHub Actions workflows and scripts, keep values from outside inside their string or code:
+  - Do not embed `${{ }}` values directly in `run:`; pass them via `env:`.
+  - In shell, always double-quote variables, and never use `eval` or build commands from strings.
+  - In jobs with write permissions, keep `persist-credentials: false` and least-privilege `permissions`.
+    Also keep `bun install --ignore-scripts` there.
+- Pin new external Actions to full commit SHAs.
+  Avoid dependency versions that were published only very recently.
+- Add tests that confirm attack inputs do not change the result.
+  For example, an `--org` value containing `/` or `..`, or a `Link` header pointing to another host.
+- If a vulnerability is found during review, do not write the details in a public issue or PR.
+  Report it privately first.
+
 ## Notes
 
 - There are two readmes: `README.md` (English) and `README.ja.md` (Japanese, the original). Keep both in sync with flag/behavior changes.
