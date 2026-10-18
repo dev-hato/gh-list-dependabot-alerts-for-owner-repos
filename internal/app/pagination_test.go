@@ -18,9 +18,6 @@ import (
 
 var errCloseBoom = errors.New("close boom")
 
-// paginationGuardTimeout bounds the pagination-guard tests, which would otherwise loop forever if a guard regressed.
-const paginationGuardTimeout = 30 * time.Second
-
 type testItem struct {
 	Number int `json:"number"`
 }
@@ -76,13 +73,13 @@ func twoPageHandler(t *testing.T, calls *int, page2Link string) http.HandlerFunc
 	}
 }
 
-// fetchAllPagesWithinGuardTimeout runs FetchAllPages against client under paginationGuardTimeout.
-// The pagination-guard tests use it because, without the guard, FetchAllPages would paginate forever,
-// so the deadline makes them fail fast instead of hanging.
+// fetchAllPagesWithinGuardTimeout runs FetchAllPages against client under a 30-second deadline.
+// The pagination-guard tests use it so that a regressed guard fails fast instead of hanging.
 func fetchAllPagesWithinGuardTimeout(t *testing.T, client *app.GithubClient) error {
 	t.Helper()
 
-	ctx, cancel := context.WithTimeout(t.Context(), paginationGuardTimeout)
+	// Without the deadline, FetchAllPages would paginate forever if a guard regressed.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 
 	_, err := app.NewPageFetcher[testItem](client).FetchAllPages(ctx, "orgs/foo/dependabot/alerts")
