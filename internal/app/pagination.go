@@ -66,7 +66,7 @@ func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T],
 	}(httpResponse.Body)
 
 	// A body over MaxPageBytes is cut short, so it fails to decode instead of being read in full.
-	if err := json.NewDecoder(io.LimitReader(httpResponse.Body, MaxPageBytes)).Decode(&p.Items); err != nil {
+	if err = json.NewDecoder(io.LimitReader(httpResponse.Body, MaxPageBytes)).Decode(&p.Items); err != nil {
 		return p, errors.Wrap(err, "Failed to Decode")
 	}
 
