@@ -151,5 +151,13 @@ func (c *GithubClient) ListAlertsForUser(ctx context.Context) ([]SmallDependabot
 		return nil, errors.Wrap(err, "Failed to Wait")
 	}
 
-	return slices.Concat(perRepoAlerts...), nil
+	smallAlerts := slices.Concat(perRepoAlerts...)
+
+	// slices.Concat returns nil when there are no alerts,
+	// which would marshal to "null" instead of the JSON array "[]".
+	if smallAlerts == nil {
+		return []SmallDependabotAlert{}, nil
+	}
+
+	return smallAlerts, nil
 }
