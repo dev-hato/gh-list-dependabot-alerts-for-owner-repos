@@ -83,7 +83,7 @@ Both paths only request `state=open` alerts (`AlertsScope.OpenAlertsURL` in `lis
 Its `FetchAllPages` method follows the GitHub API `Link` response header across pages.
 The item type rides on the receiver because a Go method can't declare its own type parameter.
 That's what keeps `FetchPage`/`FetchAllPages` down to one argument each.
-It uses `github.RESTClient.RequestWithContext` directly.
+It uses `api.RESTClient.RequestWithContext` (`github.com/cli/go-gh/v2/pkg/api`) directly.
 It skips the go-github client's built-in pagination.
 This lets raw JSON be decoded into whatever type `T` is needed per call site.
 `LinkHeader.NextPath` parses the `Link` header with a regular expression to extract the `rel="next"` URL.
