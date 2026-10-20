@@ -153,7 +153,7 @@ Working correctly is not enough.
 - Pin new external Actions to full commit SHAs.
   Avoid dependency versions that were published only very recently.
 - When fixing a security problem, always write a test that confirms the problem no longer reproduces.
-  - Feed it the input an attack would use, and check that the result doesn't change.
+  - Feed it the input an attack would use, and check that the attack no longer succeeds.
     For example, the fixed code now rejects that input.
     Such inputs include an `--org` value containing `/` or `..`, or a `Link` header pointing to another host.
   - Confirm that the test fails against the code before the fix, so it actually detects the problem.
