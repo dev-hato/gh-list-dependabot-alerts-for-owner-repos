@@ -89,6 +89,11 @@ That blocks until the limiter admits the request.
 It allows `MaxTotalBytes` of response bodies and `MaxTotalItems` decoded items in total, across every page and repository.
 `PageFetcher.FetchPage` reserves up to `MaxPageBytes` before decoding a page and refunds what it didn't read.
 It then spends the page's item count, and fails once either limit runs out.
+Non-2xx responses never reach `FetchPage`, because go-gh reads their whole body inside `RequestWithContext`.
+So `LimitedBodyTransport` (`limited_body_transport.go`) caps those bodies at `MaxErrorBodyBytes`, underneath go-gh.
+`NewDefaultGithubClient` passes it as `ClientOptions.Transport`, which overrides go-gh's own transport choice.
+`defaultBaseTransport` repeats that choice, including the `http_unix_socket` setting, as its base.
+Test clients from `newRESTClientWithTransport` wrap their fake transports in it too.
 
 `client`, `limiter` and `budget` are bundled into one `*GithubClient` (`pagination.go`).
 It's defined as `{Rest *api.RESTClient, Limiter *rate.Limiter, Budget *Budget}`.
