@@ -25,11 +25,13 @@ type Page[T any] struct {
 	NextPath string
 }
 
-// GithubClient bundles the REST client with the rate limiter that throttles it.
-// Every fetch needs both together, so they travel as one value instead of two.
+// GithubClient bundles the REST client with the rate limiter that throttles it
+// and the budget that caps how much of its responses get decoded.
+// Every fetch needs all three together, so they travel as one value.
 type GithubClient struct {
 	Rest    *api.RESTClient
 	Limiter *rate.Limiter
+	Budget  *Budget
 }
 
 // PageFetcher fetches paginated GitHub API responses whose items decode into T.
@@ -65,9 +67,23 @@ func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T],
 		}
 	}(httpResponse.Body)
 
-	// A body over MaxPageBytes is cut short, so it fails to decode instead of being read in full.
-	if err = json.NewDecoder(io.LimitReader(httpResponse.Body, MaxPageBytes)).Decode(&p.Items); err != nil {
+	// A body over MaxPageBytes, or over what's left of the shared budget, is cut short,
+	// so it fails to decode instead of being read in full.
+	limit := f.Client.Budget.ReserveBytes(MaxPageBytes)
+	body := &io.LimitedReader{R: httpResponse.Body, N: limit}
+
+	err = json.NewDecoder(body).Decode(&p.Items)
+	f.Client.Budget.Bytes.Add(body.N)
+	if err != nil {
+		if body.N == 0 {
+			return p, errors.Wrapf(err, "Failed to Decode within the %d-byte limit", limit)
+		}
+
 		return p, errors.Wrap(err, "Failed to Decode")
+	}
+
+	if !f.Client.Budget.SpendItems(int64(len(p.Items))) {
+		return p, errors.New("Pagination exceeds the item limit")
 	}
 
 	nextPath, err := LinkHeader(httpResponse.Header.Get("Link")).NextPath(path)
