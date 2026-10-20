@@ -20,6 +20,8 @@ const (
 	MaxPageBytes = 64 << 20
 )
 
+// Page is one decoded page of items.
+// NextPath is the next page's path, or "" when the response linked no next page.
 type Page[T any] struct {
 	Items    []T
 	NextPath string
@@ -47,8 +49,6 @@ func NewPageFetcher[T any](client *GithubClient) *PageFetcher[T] {
 }
 
 func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T], err error) {
-	p.NextPath = path
-
 	if err = f.Client.Limiter.Wait(ctx); err != nil {
 		return p, errors.Wrap(err, "Failed to Limiter.Wait")
 	}
@@ -86,7 +86,7 @@ func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T],
 		return p, errors.New("Pagination exceeds the item limit")
 	}
 
-	nextPath, err := LinkHeader(httpResponse.Header.Get("Link")).NextPath(path)
+	nextPath, err := LinkHeader(httpResponse.Header.Get("Link")).NextPath()
 	if err != nil {
 		return p, errors.Wrap(err, "Failed to NextPath")
 	}
@@ -121,7 +121,7 @@ func (f *PageFetcher[T]) FetchAllPages(ctx context.Context, path string) ([]T, e
 
 		allItems = append(allItems, p.Items...)
 
-		if path == p.NextPath {
+		if p.NextPath == "" {
 			return allItems, nil
 		}
 

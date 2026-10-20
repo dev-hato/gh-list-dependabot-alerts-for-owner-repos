@@ -78,8 +78,9 @@ It uses `api.RESTClient.RequestWithContext` (`github.com/cli/go-gh/v2/pkg/api`) 
 It skips the go-github client's built-in pagination.
 This lets raw JSON be decoded into whatever type `T` is needed per call site.
 `LinkHeader.NextPath` parses the `Link` header with a regular expression to extract the `rel="next"` URL.
-When there's no next link, it returns the current path unchanged.
-`FetchAllPages` uses that as its loop-termination signal.
+When there's no next link, it returns "", which `FetchAllPages` uses as its loop-termination signal.
+A next link with an empty path is an error, so "" always means "no more pages".
+A next link back to the current page therefore can't pass as "no more pages"; the loop guard catches it instead.
 
 **Rate limiting** (`rate_limiter.go`): a package-level `limiter` throttles outgoing requests.
 `PageFetcher.FetchPage` (`pagination.go`) calls `Limiter.Wait(ctx)` before every single HTTP request.

@@ -18,9 +18,11 @@ var linkRE = regexp.MustCompile(`<([^>]+)>;\s*rel="([^"]+)"`)
 type LinkHeader string
 
 // NextPath returns the "next" page path found in the header, relative to https://api.github.com/.
-// If none is found, it returns path unchanged, signaling "no more pages" to callers that compare the two.
+// It returns "" when there is no next link at all.
+// Every real next page has a non-empty path, so a next link back to the current page is never mistaken for "no more pages",
+// and a next link whose path is empty is an error.
 // The header comes from the response, so a next link that would leave api.github.com is an error.
-func (l LinkHeader) NextPath(path string) (string, error) {
+func (l LinkHeader) NextPath() (string, error) {
 	for _, m := range linkRE.FindAllStringSubmatch(string(l), -1) {
 		if len(m) <= 2 || m[2] != "next" {
 			continue
@@ -37,6 +39,9 @@ func (l LinkHeader) NextPath(path string) (string, error) {
 		}
 
 		next := strings.TrimPrefix(u.RequestURI(), "/")
+		if next == "" {
+			return "", errors.Newf("Next link %q has no path", m[1])
+		}
 
 		// go-gh sends a path that parses as an absolute URL as-is, so the relative path must not parse as one.
 		ref, err := url.Parse(next)
@@ -51,5 +56,5 @@ func (l LinkHeader) NextPath(path string) (string, error) {
 		return next, nil
 	}
 
-	return path, nil
+	return "", nil
 }
