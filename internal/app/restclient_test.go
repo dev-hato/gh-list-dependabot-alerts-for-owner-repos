@@ -52,13 +52,15 @@ func jsonHandler(t *testing.T, status int, body string) http.HandlerFunc {
 	}
 }
 
+// newRESTClientWithTransport returns an *api.RESTClient that sends requests through transport,
+// wrapped in app.LimitedBodyTransport just like the production client.
 func newRESTClientWithTransport(t *testing.T, transport http.RoundTripper) *api.RESTClient {
 	t.Helper()
 
 	client, err := api.NewRESTClient(api.ClientOptions{
 		Host:      "github.com",
 		AuthToken: "test-token",
-		Transport: transport,
+		Transport: app.LimitedBodyTransport{Base: transport},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -32,11 +32,12 @@ type App struct {
 }
 
 // NewDefaultGithubClient builds the production *GithubClient:
-// a real GitHub REST client paired with the package-level rate limiter and budget.
+// a real GitHub REST client, with error bodies capped by LimitedBodyTransport,
+// paired with the package-level rate limiter and budget.
 func NewDefaultGithubClient() (*GithubClient, error) {
-	rest, err := api.DefaultRESTClient()
+	rest, err := api.NewRESTClient(api.ClientOptions{Transport: LimitedBodyTransport{Base: defaultBaseTransport()}})
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to DefaultRESTClient")
+		return nil, errors.Wrap(err, "Failed to NewRESTClient")
 	}
 
 	return &GithubClient{Rest: rest, Limiter: limiter, Budget: budget}, nil
