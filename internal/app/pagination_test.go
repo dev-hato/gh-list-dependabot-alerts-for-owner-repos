@@ -102,8 +102,8 @@ func TestFetchPage(t *testing.T) {
 					t.Errorf("items mismatch (-want +got):\n%s", diff)
 				}
 
-				if p.NextPath != "orgs/foo/dependabot/alerts" {
-					t.Errorf("nextPath = %q, want unchanged path", p.NextPath)
+				if p.NextPath != "" {
+					t.Errorf("nextPath = %q, want empty", p.NextPath)
 				}
 			},
 		},
@@ -229,6 +229,25 @@ func TestFetchAllPages(t *testing.T) {
 
 		if calls != 2 {
 			t.Errorf("server was called %d times, want 2", calls)
+		}
+	})
+
+	t.Run("a next link to the current page is an error", func(t *testing.T) {
+		var calls int
+
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.Header().Set("Link", `<https://api.github.com/orgs/foo/dependabot/alerts>; rel="next"`)
+			jsonHandler(t, http.StatusOK, `[{"number":1}]`)(w, r)
+		}))
+
+		err := fetchAllPagesWithinGuardTimeout(t, client)
+		if err == nil || !strings.Contains(err.Error(), "Pagination loops back") {
+			t.Errorf("fetchAllPages() error = %v, want it to mention the loop", err)
+		}
+
+		if calls != 1 {
+			t.Errorf("server was called %d times, want 1", calls)
 		}
 	})
 
