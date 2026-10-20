@@ -80,19 +80,25 @@ This lets raw JSON be decoded into whatever type `T` is needed per call site.
 `LinkHeader.NextPath` parses the `Link` header with a regular expression to extract the `rel="next"` URL.
 When there's no next link, it returns "", which `FetchAllPages` uses as its loop-termination signal.
 A next link with an empty path is an error, so "" always means "no more pages".
-A next link back to the current page therefore can't pass as "no more pages"; the loop guard catches it instead.
+So a next link back to the current page can't pass as "no more pages".
+The loop guard catches it instead.
 
 **Rate limiting** (`rate_limiter.go`): a package-level `limiter` throttles outgoing requests.
 `PageFetcher.FetchPage` (`pagination.go`) calls `Limiter.Wait(ctx)` before every single HTTP request.
 That blocks until the limiter admits the request.
 
-**Response budget** (`budget.go`): a package-level `budget` caps how much response data the whole process decodes.
-It allows `MaxTotalBytes` of response bodies and `MaxTotalItems` decoded items in total, across every page and repository.
-`PageFetcher.FetchPage` reserves up to `MaxPageBytes` before decoding a page and refunds what it didn't read.
+**Response budget** (`budget.go`): a package-level `budget` caps the response data the process decodes.
+It allows `MaxTotalBytes` of response bodies and `MaxTotalItems` decoded items in total.
+That total spans every page and every repository.
+`PageFetcher.FetchPage` reserves up to `MaxPageBytes` before decoding a page.
+It refunds whatever it didn't read.
 It then spends the page's item count, and fails once either limit runs out.
-Non-2xx responses never reach `FetchPage`, because go-gh reads their whole body inside `RequestWithContext`.
-So `LimitedBodyTransport` (`limited_body_transport.go`) caps those bodies at `MaxErrorBodyBytes`, underneath go-gh.
-`NewDefaultGithubClient` passes it as `ClientOptions.Transport`, which overrides go-gh's own transport choice.
+Non-2xx responses never reach `FetchPage`.
+go-gh reads their whole body inside `RequestWithContext` instead.
+So `LimitedBodyTransport` (`limited_body_transport.go`) caps those bodies at `MaxErrorBodyBytes`.
+It sits underneath go-gh.
+`NewDefaultGithubClient` passes it as `ClientOptions.Transport`.
+That overrides go-gh's own transport choice.
 `defaultBaseTransport` repeats that choice, including the `http_unix_socket` setting, as its base.
 Test clients from `newRESTClientWithTransport` wrap their fake transports in it too.
 
@@ -115,7 +121,8 @@ This matters because `GithubClient.ListAlertsForUser` fetches repositories in pa
 Keep `limiter` a single shared instance passed down to every goroutine.
 A limiter constructed fresh per call or per goroutine would stop throttling entirely.
 Each fresh instance starts unthrottled, no matter how many requests other goroutines just made.
-The same goes for `budget`: `Budget` is safe for concurrent use, and a fresh one per call would give every repository its own full limit.
+The same goes for `budget`, and `Budget` is safe for concurrent use too.
+A fresh one per call would give every repository its own full limit.
 `PageFetcher.FetchPage` writes its `Call <path>` progress line straight to `os.Stderr`.
 This is expected/normal output, not an error.
 It is documented in the readme for users who see the run appear to hang.
