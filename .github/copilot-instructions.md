@@ -84,9 +84,15 @@ When there's no next link, it returns the current path unchanged.
 **Rate limiting** (`rate_limiter.go`): a package-level `limiter` throttles outgoing requests.
 `PageFetcher.FetchPage` (`pagination.go`) calls `Limiter.Wait(ctx)` before every single HTTP request.
 That blocks until the limiter admits the request.
-`client` and `limiter` are bundled into one `*GithubClient` (`pagination.go`).
-It's defined as `{Rest *api.RESTClient, Limiter *rate.Limiter}`.
-Every fetch always needs both together, so they travel as a single value.
+
+**Response budget** (`budget.go`): a package-level `budget` caps how much response data the whole process decodes.
+It allows `MaxTotalBytes` of response bodies and `MaxTotalItems` decoded items in total, across every page and repository.
+`PageFetcher.FetchPage` reserves up to `MaxPageBytes` before decoding a page and refunds what it didn't read.
+It then spends the page's item count, and fails once either limit runs out.
+
+`client`, `limiter` and `budget` are bundled into one `*GithubClient` (`pagination.go`).
+It's defined as `{Rest *api.RESTClient, Limiter *rate.Limiter, Budget *Budget}`.
+Every fetch always needs all three together, so they travel as a single value.
 
 That value is the receiver of every alert-listing method.
 It comes down from `App.Run`, built by the `App.NewClient` field.
@@ -94,8 +100,8 @@ That field is `app.NewDefaultGithubClient` in production.
 So tests can exercise the whole call chain against a fake HTTP server.
 That covers `run_test.go`, `list_alerts_test.go`, and `pagination_test.go`.
 The test files are `package app_test` (black-box); shared helpers live in `restclient_test.go`.
-Tests build one via `newTestGithubClient()` and `noWaitLimiter()` (`restclient_test.go`).
-That limiter never blocks.
+Tests build one via `newTestGithubClient()`, `noWaitLimiter()` and `fullBudget()` (`restclient_test.go`).
+That limiter never blocks, and each test gets its own budget.
 
 `rate.Limiter` is safe for concurrent use.
 The production `limiter` is one process-wide instance shared across all goroutines.
@@ -103,6 +109,7 @@ This matters because `GithubClient.ListAlertsForUser` fetches repositories in pa
 Keep `limiter` a single shared instance passed down to every goroutine.
 A limiter constructed fresh per call or per goroutine would stop throttling entirely.
 Each fresh instance starts unthrottled, no matter how many requests other goroutines just made.
+The same goes for `budget`: `Budget` is safe for concurrent use, and a fresh one per call would give every repository its own full limit.
 `PageFetcher.FetchPage` writes its `Call <path>` progress line straight to `os.Stderr`.
 This is expected/normal output, not an error.
 It is documented in the readme for users who see the run appear to hang.

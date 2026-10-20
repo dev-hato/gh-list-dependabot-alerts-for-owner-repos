@@ -23,11 +23,17 @@ func noWaitLimiter() *rate.Limiter {
 	return rate.NewLimiter(rate.Inf, 0)
 }
 
+// fullBudget returns a fresh *app.Budget at the production limits,
+// so each test spends from its own budget instead of one shared across tests.
+func fullBudget() *app.Budget {
+	return app.NewBudget(app.BudgetLimits{Bytes: app.MaxTotalBytes, Items: app.MaxTotalItems})
+}
+
 // newTestGithubClient returns a *app.GithubClient whose requests are redirected to an httptest.Server running handler,
-// paired with a Waiter that never blocks.
+// paired with a Waiter that never blocks and a fresh full budget.
 func newTestGithubClient(t *testing.T, handler http.Handler) *app.GithubClient {
 	t.Helper()
-	return &app.GithubClient{Rest: newTestRESTClient(t, handler), Limiter: noWaitLimiter()}
+	return &app.GithubClient{Rest: newTestRESTClient(t, handler), Limiter: noWaitLimiter(), Budget: fullBudget()}
 }
 
 // jsonHandler returns an http.HandlerFunc that responds with status and body as an application/json response.

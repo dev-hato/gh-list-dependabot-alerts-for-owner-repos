@@ -32,14 +32,14 @@ type App struct {
 }
 
 // NewDefaultGithubClient builds the production *GithubClient:
-// a real GitHub REST client paired with the package-level rate limiter.
+// a real GitHub REST client paired with the package-level rate limiter and budget.
 func NewDefaultGithubClient() (*GithubClient, error) {
 	rest, err := api.DefaultRESTClient()
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to DefaultRESTClient")
 	}
 
-	return &GithubClient{Rest: rest, Limiter: limiter}, nil
+	return &GithubClient{Rest: rest, Limiter: limiter, Budget: budget}, nil
 }
 
 // NewCLI builds the CLI's flag set together with the CLIOptions its flags populate on Parse.
