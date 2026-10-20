@@ -59,6 +59,10 @@ func TestLinkHeaderNextPathRejectsHostileLinks(t *testing.T) {
 		"absolute URL to another host":      `<https://api.github.com/https://example.com/alerts?page=2>; rel="next"`,
 		"plain-HTTP URL to another host":    `<https://api.github.com/http://example.com/alerts?page=2>; rel="next"`,
 		"control character in the next URL": "<https://api.github.com/orgs/foo/dependabot/alerts?page=2\x1b[2J>; rel=\"next\"",
+		"next link on another host":         `<https://example.com/orgs/foo/dependabot/alerts?page=2>; rel="next"`,
+		"next link over plain HTTP":         `<http://api.github.com/orgs/foo/dependabot/alerts?page=2>; rel="next"`,
+		"next link on another port":         `<https://api.github.com:8443/orgs/foo/dependabot/alerts?page=2>; rel="next"`,
+		"relative next link":                `</orgs/foo/dependabot/alerts?page=2>; rel="next"`,
 	}
 
 	for name, linkHeader := range tests {
