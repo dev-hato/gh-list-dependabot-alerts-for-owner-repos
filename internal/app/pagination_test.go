@@ -231,47 +231,51 @@ func TestFetchAllPages(t *testing.T) {
 			t.Errorf("server was called %d times, want 2", calls)
 		}
 	})
+}
 
-	t.Run("a next link to the current page is an error", func(t *testing.T) {
-		var calls int
+func TestFetchAllPagesNextLinkGuards(t *testing.T) {
+	tests := map[string]struct {
+		// nextLink returns the next link the server sends on its call-th call.
+		nextLink        func(call int) string
+		wantErrContains string
+		wantCalls       int
+	}{
+		"a next link to the current page is an error": {
+			nextLink: func(int) string {
+				return `<https://api.github.com/orgs/foo/dependabot/alerts>; rel="next"`
+			},
+			wantErrContains: "Pagination loops back",
+			wantCalls:       1,
+		},
+		"endless new next links stop at MaxPages": {
+			nextLink: func(call int) string {
+				return fmt.Sprintf(`<https://api.github.com/orgs/foo/dependabot/alerts?page=%d>; rel="next"`, call+1)
+			},
+			wantErrContains: "Pagination exceeds",
+			wantCalls:       app.MaxPages,
+		},
+	}
 
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls++
-			w.Header().Set("Link", `<https://api.github.com/orgs/foo/dependabot/alerts>; rel="next"`)
-			jsonHandler(t, http.StatusOK, `[{"number":1}]`)(w, r)
-		}))
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var calls int
 
-		err := fetchAllPagesWithinGuardTimeout(t, client)
-		if err == nil || !strings.Contains(err.Error(), "Pagination loops back") {
-			t.Errorf("fetchAllPages() error = %v, want it to mention the loop", err)
-		}
+			client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.Header().Set("Link", tt.nextLink(calls))
+				jsonHandler(t, http.StatusOK, `[]`)(w, r)
+			}))
 
-		if calls != 1 {
-			t.Errorf("server was called %d times, want 1", calls)
-		}
-	})
+			err := fetchAllPagesWithinGuardTimeout(t, client)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
+				t.Errorf("fetchAllPages() error = %v, want it to mention %q", err, tt.wantErrContains)
+			}
 
-	t.Run("endless new next links stop at MaxPages", func(t *testing.T) {
-		var calls int
-
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls++
-			w.Header().Set(
-				"Link",
-				fmt.Sprintf(`<https://api.github.com/orgs/foo/dependabot/alerts?page=%d>; rel="next"`, calls+1),
-			)
-			jsonHandler(t, http.StatusOK, `[]`)(w, r)
-		}))
-
-		err := fetchAllPagesWithinGuardTimeout(t, client)
-		if err == nil || !strings.Contains(err.Error(), "Pagination exceeds") {
-			t.Errorf("fetchAllPages() error = %v, want it to mention the page cap", err)
-		}
-
-		if calls != app.MaxPages {
-			t.Errorf("server was called %d times, want %d", calls, app.MaxPages)
-		}
-	})
+			if calls != tt.wantCalls {
+				t.Errorf("server was called %d times, want %d", calls, tt.wantCalls)
+			}
+		})
+	}
 }
 
 func TestFetchAllPagesTotalLimits(t *testing.T) {
