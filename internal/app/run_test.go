@@ -105,6 +105,13 @@ func TestRun(t *testing.T) {
 			},
 			wantOutputContains: `"number": 7`,
 		},
+		"no --org with zero alerts prints an empty JSON array": {
+			args: nil,
+			newClient: func(t *testing.T) (*app.GithubClient, error) {
+				return newUserReposClient(t, `[]`), nil
+			},
+			wantOutputContains: `[]`,
+		},
 		"--help prints usage and exits without error": {
 			args: []string{"--help"},
 			newClient: func(t *testing.T) (*app.GithubClient, error) {
