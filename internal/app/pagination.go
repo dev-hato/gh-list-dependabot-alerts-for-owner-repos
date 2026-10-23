@@ -71,16 +71,12 @@ func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T],
 	// so it fails to decode instead of being read in full.
 	body := &io.LimitedReader{R: BudgetReader{R: httpResponse.Body, Budget: f.Client.Budget}, N: MaxPageBytes}
 
-	if err := json.NewDecoder(body).Decode(&p.Items); err != nil {
+	if p.Items, err = f.decodeItems(json.NewDecoder(body)); err != nil {
 		if body.N == 0 {
-			return p, errors.Wrapf(err, "Failed to Decode within the %d-byte limit", MaxPageBytes)
+			return p, errors.Wrapf(err, "Failed to decodeItems within the %d-byte limit", MaxPageBytes)
 		}
 
-		return p, errors.Wrap(err, "Failed to Decode")
-	}
-
-	if !f.Client.Budget.SpendItems(int64(len(p.Items))) {
-		return p, errors.New("Pagination exceeds the item limit")
+		return p, errors.Wrap(err, "Failed to decodeItems")
 	}
 
 	nextPath, err := LinkHeader(httpResponse.Header.Get("Link")).NextPath()
@@ -91,6 +87,41 @@ func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T],
 	p.NextPath = nextPath
 
 	return p, nil
+}
+
+// decodeItems decodes a JSON array one item at a time,
+// spending each item from the budget before decoding it,
+// so items past the limit are never decoded or kept.
+func (f *PageFetcher[T]) decodeItems(dec *json.Decoder) ([]T, error) {
+	start, err := dec.Token()
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to Token")
+	}
+
+	if start != json.Delim('[') {
+		return nil, errors.Newf("Response body starts with %v, not a JSON array", start)
+	}
+
+	var items []T
+
+	for dec.More() {
+		if !f.Client.Budget.SpendItems(1) {
+			return nil, errors.New("Pagination exceeds the item limit")
+		}
+
+		var item T
+		if err = dec.Decode(&item); err != nil {
+			return nil, errors.Wrap(err, "Failed to Decode")
+		}
+
+		items = append(items, item)
+	}
+
+	if _, err = dec.Token(); err != nil {
+		return nil, errors.Wrap(err, "Failed to Token")
+	}
+
+	return items, nil
 }
 
 func (f *PageFetcher[T]) FetchAllPages(ctx context.Context, path string) ([]T, error) {

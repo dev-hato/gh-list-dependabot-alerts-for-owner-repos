@@ -93,7 +93,9 @@ That total spans every page and every repository.
 `PageFetcher.FetchPage` reads each page through a `BudgetReader`, capped at `MaxPageBytes` per page.
 `BudgetReader` spends bytes only after they are read, never reserving them ahead of time.
 So a slow response can't hold back budget that parallel fetches need.
-`FetchPage` then spends the page's item count, and fails once either limit runs out.
+It decodes the page's JSON array one item at a time, spending each item before decoding it.
+So items past the limit are never decoded or kept.
+`FetchPage` fails once either limit runs out.
 Non-2xx responses never reach `FetchPage`.
 go-gh reads their whole body inside `RequestWithContext` instead.
 So `LimitedBodyTransport` (`limited_body_transport.go`) caps those bodies at `MaxErrorBodyBytes`.

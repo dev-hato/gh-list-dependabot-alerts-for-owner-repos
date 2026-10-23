@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +24,17 @@ var errCloseBoom = errors.New("close boom")
 
 type testItem struct {
 	Number int `json:"number"`
+}
+
+// decodedCountingItems counts how many countingItem values have been decoded.
+// Only TestFetchPageDecodesNoItemsPastTheLimit uses countingItem, so the count is that test's alone.
+var decodedCountingItems atomic.Int64
+
+type countingItem struct{}
+
+func (*countingItem) UnmarshalJSON([]byte) error {
+	decodedCountingItems.Add(1)
+	return nil
 }
 
 type failingWriter struct{}
@@ -129,7 +142,7 @@ func TestFetchPage(t *testing.T) {
 			newClient: func(t *testing.T) *app.GithubClient {
 				return newTestGithubClient(t, jsonHandler(t, http.StatusOK, `not json`))
 			},
-			wantErrContains: "Failed to Decode",
+			wantErrContains: "Failed to decodeItems",
 		},
 		"body close error surfaces even on an otherwise successful decode": {
 			newClient: func(t *testing.T) *app.GithubClient {
@@ -382,6 +395,20 @@ func TestFetchAllPagesTotalLimits(t *testing.T) {
 	})
 }
 
+func TestFetchPageDecodesNoItemsPastTheLimit(t *testing.T) {
+	client := newTestGithubClient(t, jsonHandler(t, http.StatusOK, `[{"number":1},{"number":2},{"number":3}]`))
+	client.Budget = app.NewBudget(app.BudgetLimits{Bytes: app.MaxTotalBytes, Items: 1})
+
+	_, err := app.NewPageFetcher[countingItem](client).FetchPage(t.Context(), "orgs/foo/dependabot/alerts")
+	if err == nil || !strings.Contains(err.Error(), "Pagination exceeds the item limit") {
+		t.Errorf("FetchPage() error = %v, want it to mention the item limit", err)
+	}
+
+	if got := decodedCountingItems.Load(); got != 1 {
+		t.Errorf("FetchPage() decoded %d items, want only the 1 the limit allows", got)
+	}
+}
+
 func TestFetchPageRejectsOversizedBody(t *testing.T) {
 	client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -403,9 +430,11 @@ func TestFetchPageRejectsOversizedBody(t *testing.T) {
 			return
 		}
 	}))
+	// The body holds far more items than MaxTotalItems, so lift the item limit to reach the byte limit.
+	client.Budget = app.NewBudget(app.BudgetLimits{Bytes: app.MaxTotalBytes, Items: math.MaxInt64})
 
 	_, err := app.NewPageFetcher[testItem](client).FetchPage(t.Context(), "orgs/foo/dependabot/alerts")
-	if err == nil || !strings.Contains(err.Error(), "Failed to Decode") {
-		t.Errorf("FetchPage() error = %v, want it to mention Decode", err)
+	if err == nil || !strings.Contains(err.Error(), "-byte limit") {
+		t.Errorf("FetchPage() error = %v, want it to mention the per-page byte limit", err)
 	}
 }
