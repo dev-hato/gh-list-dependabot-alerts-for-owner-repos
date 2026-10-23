@@ -1,6 +1,6 @@
 module github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos
 
-go 1.26.4
+go 1.26.10
 
 require (
 	github.com/cli/go-gh/v2 v2.16.2
