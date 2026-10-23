@@ -7,12 +7,14 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )
 
@@ -313,6 +315,48 @@ func TestFetchAllPagesTotalLimits(t *testing.T) {
 
 		if calls != 2 {
 			t.Errorf("server was called %d times, want 2", calls)
+		}
+	})
+
+	t.Run("slow parallel pages within the total byte limit succeed", func(t *testing.T) {
+		const fetches = 2
+
+		// Every response sends its headers, then holds its body back until all of them have,
+		// so every fetch is mid-read at the same time.
+		var arrived sync.WaitGroup
+		arrived.Add(fetches)
+
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+
+			arrived.Done()
+			arrived.Wait()
+			time.Sleep(100 * time.Millisecond)
+
+			if _, err := fmt.Fprint(w, `[{"number":1}]`); err != nil {
+				t.Error(err)
+			}
+		}))
+		// Room for one full page, which is far more than all the small bodies together.
+		client.Budget = app.NewBudget(app.BudgetLimits{Bytes: app.MaxPageBytes, Items: app.MaxTotalItems})
+
+		var g errgroup.Group
+
+		for i := range fetches {
+			g.Go(func() error {
+				_, err := app.NewPageFetcher[testItem](client).FetchAllPages(
+					t.Context(),
+					fmt.Sprintf("repos/alice/%d/dependabot/alerts", i),
+				)
+
+				return err
+			})
+		}
+
+		if err := g.Wait(); err != nil {
+			t.Errorf("parallel fetchAllPages() error = %v, want nil", err)
 		}
 	})
 

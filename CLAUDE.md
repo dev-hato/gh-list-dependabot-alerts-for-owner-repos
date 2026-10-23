@@ -90,9 +90,10 @@ That blocks until the limiter admits the request.
 **Response budget** (`budget.go`): a package-level `budget` caps the response data the process decodes.
 It allows `MaxTotalBytes` of response bodies and `MaxTotalItems` decoded items in total.
 That total spans every page and every repository.
-`PageFetcher.FetchPage` reserves up to `MaxPageBytes` before decoding a page.
-It refunds whatever it didn't read.
-It then spends the page's item count, and fails once either limit runs out.
+`PageFetcher.FetchPage` reads each page through a `BudgetReader`, capped at `MaxPageBytes` per page.
+`BudgetReader` spends bytes only after they are read, never reserving them ahead of time.
+So a slow response can't hold back budget that parallel fetches need.
+`FetchPage` then spends the page's item count, and fails once either limit runs out.
 Non-2xx responses never reach `FetchPage`.
 go-gh reads their whole body inside `RequestWithContext` instead.
 So `LimitedBodyTransport` (`limited_body_transport.go`) caps those bodies at `MaxErrorBodyBytes`.

@@ -69,14 +69,11 @@ func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T],
 
 	// A body over MaxPageBytes, or over what's left of the shared budget, is cut short,
 	// so it fails to decode instead of being read in full.
-	limit := f.Client.Budget.ReserveBytes(MaxPageBytes)
-	body := &io.LimitedReader{R: httpResponse.Body, N: limit}
+	body := &io.LimitedReader{R: BudgetReader{R: httpResponse.Body, Budget: f.Client.Budget}, N: MaxPageBytes}
 
-	err = json.NewDecoder(body).Decode(&p.Items)
-	f.Client.Budget.Bytes.Add(body.N)
-	if err != nil {
+	if err := json.NewDecoder(body).Decode(&p.Items); err != nil {
 		if body.N == 0 {
-			return p, errors.Wrapf(err, "Failed to Decode within the %d-byte limit", limit)
+			return p, errors.Wrapf(err, "Failed to Decode within the %d-byte limit", MaxPageBytes)
 		}
 
 		return p, errors.Wrap(err, "Failed to Decode")

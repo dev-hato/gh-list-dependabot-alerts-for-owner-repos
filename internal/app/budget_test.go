@@ -1,35 +1,58 @@
 package app_test
 
 import (
+	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 )
 
-func TestBudgetReserveBytes(t *testing.T) {
+func TestBudgetSpendBytes(t *testing.T) {
 	t.Parallel()
 
 	b := app.NewBudget(app.BudgetLimits{Bytes: 10, Items: 0})
 
-	if got := b.ReserveBytes(4); got != 4 {
-		t.Errorf("ReserveBytes(4) = %d, want 4", got)
+	if !b.SpendBytes(4) {
+		t.Error("SpendBytes(4) = false, want true")
 	}
 
-	if got := b.ReserveBytes(100); got != 6 {
-		t.Errorf("ReserveBytes(100) = %d, want the 6 bytes left", got)
+	if b.SpendBytes(7) {
+		t.Error("SpendBytes(7) with 6 left = true, want false")
 	}
 
-	if got := b.ReserveBytes(1); got != 0 {
-		t.Errorf("ReserveBytes(1) on an empty budget = %d, want 0", got)
+	if !b.SpendBytes(6) {
+		t.Error("SpendBytes(6) with 6 left = false, want true, since a failed spend takes nothing")
 	}
+}
 
-	b.Bytes.Add(3)
+func TestBudgetReader(t *testing.T) {
+	t.Parallel()
 
-	if got := b.ReserveBytes(100); got != 3 {
-		t.Errorf("ReserveBytes(100) after RefundBytes(3) = %d, want 3", got)
-	}
+	t.Run("a body within the budget reads in full", func(t *testing.T) {
+		t.Parallel()
+
+		b := app.NewBudget(app.BudgetLimits{Bytes: 5, Items: 0})
+
+		got, err := io.ReadAll(app.BudgetReader{R: strings.NewReader("hello"), Budget: b})
+		if err != nil || string(got) != "hello" {
+			t.Errorf("ReadAll() = %q, %v, want %q, nil", got, err, "hello")
+		}
+	})
+
+	t.Run("a body past the budget is an error", func(t *testing.T) {
+		t.Parallel()
+
+		b := app.NewBudget(app.BudgetLimits{Bytes: 4, Items: 0})
+
+		_, err := io.ReadAll(app.BudgetReader{R: strings.NewReader("hello"), Budget: b})
+		if !errors.Is(err, app.ErrByteBudgetExceeded) {
+			t.Errorf("ReadAll() error = %v, want %v", err, app.ErrByteBudgetExceeded)
+		}
+	})
 }
 
 func TestBudgetSpendItems(t *testing.T) {
@@ -58,9 +81,9 @@ func TestBudgetIsSharedAcrossGoroutines(t *testing.T) {
 	b := app.NewBudget(app.BudgetLimits{Bytes: limit, Items: limit})
 
 	var (
-		wg            sync.WaitGroup
-		spentItems    atomic.Int64
-		reservedBytes atomic.Int64
+		wg         sync.WaitGroup
+		spentItems atomic.Int64
+		spentBytes atomic.Int64
 	)
 
 	for range 4 * limit {
@@ -69,7 +92,9 @@ func TestBudgetIsSharedAcrossGoroutines(t *testing.T) {
 				spentItems.Add(1)
 			}
 
-			reservedBytes.Add(b.ReserveBytes(1))
+			if b.SpendBytes(1) {
+				spentBytes.Add(1)
+			}
 		})
 	}
 
@@ -79,7 +104,7 @@ func TestBudgetIsSharedAcrossGoroutines(t *testing.T) {
 		t.Errorf("goroutines spent %d items in total, want exactly %d", got, limit)
 	}
 
-	if got := reservedBytes.Load(); got != limit {
-		t.Errorf("goroutines reserved %d bytes in total, want exactly %d", got, limit)
+	if got := spentBytes.Load(); got != limit {
+		t.Errorf("goroutines spent %d bytes in total, want exactly %d", got, limit)
 	}
 }
