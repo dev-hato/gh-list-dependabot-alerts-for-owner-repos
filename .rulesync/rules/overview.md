@@ -87,15 +87,36 @@ It uses `api.RESTClient.RequestWithContext` (`github.com/cli/go-gh/v2/pkg/api`) 
 It skips the go-github client's built-in pagination.
 This lets raw JSON be decoded into whatever type `T` is needed per call site.
 `LinkHeader.NextPath` parses the `Link` header with a regular expression to extract the `rel="next"` URL.
-When there's no next link, it returns the current path unchanged.
-`FetchAllPages` uses that as its loop-termination signal.
+When there's no next link, it returns "", which `FetchAllPages` uses as its loop-termination signal.
+A next link with an empty path is an error, so "" always means "no more pages".
+So a next link back to the current page can't pass as "no more pages".
+The loop guard catches it instead.
 
 **Rate limiting** (`rate_limiter.go`): a package-level `limiter` throttles outgoing requests.
 `PageFetcher.FetchPage` (`pagination.go`) calls `Limiter.Wait(ctx)` before every single HTTP request.
 That blocks until the limiter admits the request.
-`client` and `limiter` are bundled into one `*GithubClient` (`pagination.go`).
-It's defined as `{Rest *api.RESTClient, Limiter *rate.Limiter}`.
-Every fetch always needs both together, so they travel as a single value.
+
+**Response budget** (`budget.go`): a package-level `budget` caps the response data the process decodes.
+It allows `MaxTotalBytes` of response bodies and `MaxTotalItems` decoded items in total.
+That total spans every page and every repository.
+`PageFetcher.FetchPage` reads each page through a `BudgetReader`, capped at `MaxPageBytes` per page.
+`BudgetReader` spends bytes only after they are read, never reserving them ahead of time.
+So a slow response can't hold back budget that parallel fetches need.
+It decodes the page's JSON array one item at a time, spending each item before decoding it.
+So items past the limit are never decoded or kept.
+`FetchPage` fails once either limit runs out.
+Non-2xx responses never reach `FetchPage`.
+go-gh reads their whole body inside `RequestWithContext` instead.
+So `LimitedBodyTransport` (`limited_body_transport.go`) caps those bodies at `MaxErrorBodyBytes`.
+It sits underneath go-gh.
+`NewDefaultGithubClient` passes it as `ClientOptions.Transport`.
+That overrides go-gh's own transport choice.
+`defaultBaseTransport` repeats that choice, including the `http_unix_socket` setting, as its base.
+Test clients from `newRESTClientWithTransport` wrap their fake transports in it too.
+
+`client`, `limiter` and `budget` are bundled into one `*GithubClient` (`pagination.go`).
+It's defined as `{Rest *api.RESTClient, Limiter *rate.Limiter, Budget *Budget}`.
+Every fetch always needs all three together, so they travel as a single value.
 
 That value is the receiver of every alert-listing method.
 It comes down from `App.Run`, built by the `App.NewClient` field.
@@ -103,8 +124,8 @@ That field is `app.NewDefaultGithubClient` in production.
 So tests can exercise the whole call chain against a fake HTTP server.
 That covers `run_test.go`, `list_alerts_test.go`, and `pagination_test.go`.
 The test files are `package app_test` (black-box); shared helpers live in `restclient_test.go`.
-Tests build one via `newTestGithubClient()` and `noWaitLimiter()` (`restclient_test.go`).
-That limiter never blocks.
+Tests build one via `newTestGithubClient()`, `noWaitLimiter()` and `fullBudget()` (`restclient_test.go`).
+That limiter never blocks, and each test gets its own budget.
 
 `rate.Limiter` is safe for concurrent use.
 The production `limiter` is one process-wide instance shared across all goroutines.
@@ -112,6 +133,8 @@ This matters because `GithubClient.ListAlertsForUser` fetches repositories in pa
 Keep `limiter` a single shared instance passed down to every goroutine.
 A limiter constructed fresh per call or per goroutine would stop throttling entirely.
 Each fresh instance starts unthrottled, no matter how many requests other goroutines just made.
+The same goes for `budget`, and `Budget` is safe for concurrent use too.
+A fresh one per call would give every repository its own full limit.
 `PageFetcher.FetchPage` writes its `Call <path>` progress line straight to `os.Stderr`.
 This is expected/normal output, not an error.
 It is documented in the readme for users who see the run appear to hang.
