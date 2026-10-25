@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cockroachdb/errors"
@@ -93,9 +94,13 @@ func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T],
 // spending each item from the budget before decoding it,
 // so items past the limit are never decoded or kept.
 func (f *PageFetcher[T]) decodeItems(dec *json.Decoder) ([]T, error) {
+	// Without UseNumber, Token parses a number body as float64,
+	// and one out of float64's range fails with an error quoting the whole number.
+	dec.UseNumber()
+
 	start, err := dec.Token()
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to Token")
+		return nil, errors.Wrap(decodeError(err), "Failed to Token")
 	}
 
 	if start != json.Delim('[') {
@@ -112,17 +117,42 @@ func (f *PageFetcher[T]) decodeItems(dec *json.Decoder) ([]T, error) {
 
 		var item T
 		if err = dec.Decode(&item); err != nil {
-			return nil, errors.Wrap(err, "Failed to Decode")
+			return nil, errors.Wrap(decodeError(err), "Failed to Decode")
 		}
 
 		items = append(items, item)
 	}
 
 	if _, err = dec.Token(); err != nil {
-		return nil, errors.Wrap(err, "Failed to Token")
+		return nil, errors.Wrap(decodeError(err), "Failed to Token")
 	}
 
 	return items, nil
+}
+
+// decodeError keeps the response's values out of a decode error, since the error ends up on stderr.
+// encoding/json quotes numbers that don't fit their field,
+// and UnmarshalJSON methods like go-github's Timestamp quote whatever failed to parse.
+func decodeError(err error) error {
+	var (
+		typeErr   *json.UnmarshalTypeError
+		syntaxErr *json.SyntaxError
+	)
+
+	switch {
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF),
+		errors.Is(err, ErrByteBudgetExceeded), errors.Is(err, errBodyRead):
+		// These come from reading the body, not from its content, so they quote nothing from it.
+		return err
+	case errors.As(err, &typeErr):
+		// Value is "number 123" for numbers, so keep only its first word, the JSON kind.
+		kind, _, _ := strings.Cut(typeErr.Value, " ")
+		return errors.Newf("JSON %s doesn't fit Go type %s at field %q", kind, typeErr.Type, typeErr.Field)
+	case errors.As(err, &syntaxErr):
+		return errors.Newf("Invalid JSON at byte %d", syntaxErr.Offset)
+	default:
+		return errors.New("A value in the response failed to decode")
+	}
 }
 
 func (f *PageFetcher[T]) FetchAllPages(ctx context.Context, path string) ([]T, error) {

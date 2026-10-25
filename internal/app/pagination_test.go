@@ -395,14 +395,18 @@ func TestFetchAllPagesTotalLimits(t *testing.T) {
 	})
 }
 
-func TestFetchPageKeepsNonArrayBodiesOutOfTheError(t *testing.T) {
+func TestFetchPageKeepsResponseValuesOutOfTheError(t *testing.T) {
 	t.Parallel()
 
-	const marker = "SECRET-MARKER-c0ffee"
+	// Digits only, so the marker can also make up a JSON number.
+	const marker = "123456789012345678901234567890"
 
 	tests := map[string]string{
-		"JSON string body": `"` + marker + `"`,
-		"JSON object body": `{"token":"` + marker + `"}`,
+		"JSON string body":                        `"` + marker + `"`,
+		"JSON object body":                        `{"token":"` + marker + `"}`,
+		"JSON number body out of float64's range": marker + "e99999",
+		"item number out of int's range":          `[{"number":` + marker + `}]`,
+		"item timestamp that doesn't parse":       `[{"created_at":"` + marker + `"}]`,
 	}
 
 	for name, body := range tests {
@@ -411,14 +415,14 @@ func TestFetchPageKeepsNonArrayBodiesOutOfTheError(t *testing.T) {
 
 			client := newTestGithubClient(t, jsonHandler(t, http.StatusOK, body))
 
-			_, err := app.NewPageFetcher[testItem](client).FetchPage(t.Context(), "orgs/foo/dependabot/alerts")
+			_, err := app.NewPageFetcher[app.DependabotAlert](client).FetchPage(t.Context(), "orgs/foo/dependabot/alerts")
 			if err == nil {
-				t.Fatal("FetchPage() error = nil, want an error for a non-array body")
+				t.Fatal("FetchPage() error = nil, want an error for a body that doesn't decode")
 			}
 
 			// FatalReporter prints errors with %+v, so check that form too.
 			if got := fmt.Sprintf("%+v", err); strings.Contains(got, marker) {
-				t.Errorf("FetchPage() error = %q, want it to leave out the response body", got)
+				t.Errorf("FetchPage() error = %q, want it to leave out the response's values", got)
 			}
 		})
 	}

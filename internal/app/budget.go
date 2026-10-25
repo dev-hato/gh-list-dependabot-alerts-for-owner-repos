@@ -19,6 +19,9 @@ const (
 // ErrByteBudgetExceeded is what reading response bodies past the budget's byte limit fails with.
 var ErrByteBudgetExceeded = errors.New("Response bodies exceed the total byte limit")
 
+// errBodyRead marks errors from reading a response body, as opposed to decoding its content.
+var errBodyRead = errors.New("Response body read failed")
+
 // budget is the process-wide allowance every fetch spends from,
 // so parallel per-repository fetches share one cap instead of each getting their own.
 var budget = NewBudget(BudgetLimits{Bytes: MaxTotalBytes, Items: MaxTotalItems})
@@ -88,7 +91,7 @@ func (r BudgetReader) Read(p []byte) (int, error) {
 
 	// io.EOF must reach the caller unwrapped, since readers compare against it with ==.
 	if err != nil && !errors.Is(err, io.EOF) {
-		return n, errors.Wrap(err, "Failed to Read")
+		return n, errors.Mark(errors.Wrap(err, "Failed to Read"), errBodyRead)
 	}
 
 	return n, err
