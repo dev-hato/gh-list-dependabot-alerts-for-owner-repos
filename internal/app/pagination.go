@@ -99,7 +99,8 @@ func (f *PageFetcher[T]) decodeItems(dec *json.Decoder) ([]T, error) {
 	}
 
 	if start != json.Delim('[') {
-		return nil, errors.Newf("Response body starts with %v, not a JSON array", start)
+		// The token comes from the response, so keep its value out of the error, which ends up on stderr.
+		return nil, errors.New("Response body is not a JSON array")
 	}
 
 	var items []T

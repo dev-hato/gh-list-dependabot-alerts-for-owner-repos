@@ -395,6 +395,35 @@ func TestFetchAllPagesTotalLimits(t *testing.T) {
 	})
 }
 
+func TestFetchPageKeepsNonArrayBodiesOutOfTheError(t *testing.T) {
+	t.Parallel()
+
+	const marker = "SECRET-MARKER-c0ffee"
+
+	tests := map[string]string{
+		"JSON string body": `"` + marker + `"`,
+		"JSON object body": `{"token":"` + marker + `"}`,
+	}
+
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newTestGithubClient(t, jsonHandler(t, http.StatusOK, body))
+
+			_, err := app.NewPageFetcher[testItem](client).FetchPage(t.Context(), "orgs/foo/dependabot/alerts")
+			if err == nil {
+				t.Fatal("FetchPage() error = nil, want an error for a non-array body")
+			}
+
+			// FatalReporter prints errors with %+v, so check that form too.
+			if got := fmt.Sprintf("%+v", err); strings.Contains(got, marker) {
+				t.Errorf("FetchPage() error = %q, want it to leave out the response body", got)
+			}
+		})
+	}
+}
+
 func TestFetchPageDecodesNoItemsPastTheLimit(t *testing.T) {
 	client := newTestGithubClient(t, jsonHandler(t, http.StatusOK, `[{"number":1},{"number":2},{"number":3}]`))
 	client.Budget = app.NewBudget(app.BudgetLimits{Bytes: app.MaxTotalBytes, Items: 1})
