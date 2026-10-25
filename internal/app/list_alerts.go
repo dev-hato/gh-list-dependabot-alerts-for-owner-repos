@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -27,14 +28,42 @@ const (
 	RepoScope AlertsScope = "repos"
 )
 
+var (
+	// ownerNameRE matches a GitHub user or organization login.
+	// It allows "_" because Enterprise Managed User logins contain one.
+	ownerNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	// repoNameRE matches a GitHub repository name.
+	repoNameRE = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+)
+
+// IsValidTarget reports whether target is a well-formed "{org}" (OrgScope) or "{owner}/{repo}" (RepoScope).
+// The target is spliced into the request path, so this rejects anything that could steer the request elsewhere:
+// extra "/" segments, "." or "..", "?", "#", "%" and control characters.
+func (s AlertsScope) IsValidTarget(target string) bool {
+	switch s {
+	case OrgScope:
+		return ownerNameRE.MatchString(target)
+	case RepoScope:
+		owner, repo, ok := strings.Cut(target, "/")
+		return ok && ownerNameRE.MatchString(owner) && repo != "." && repo != ".." && repoNameRE.MatchString(repo)
+	default:
+		return false
+	}
+}
+
 // OpenAlertsURL builds a "state=open" filtered request path for this scope's Dependabot alerts endpoint.
 // target is the "{org}" or "{owner}/{repo}" segment that follows the scope.
-func (s AlertsScope) OpenAlertsURL(target string) string {
+// It fails when target isn't IsValidTarget, since it comes from a flag or an API response.
+func (s AlertsScope) OpenAlertsURL(target string) (string, error) {
+	if !s.IsValidTarget(target) {
+		return "", errors.Newf("Invalid %s target %q", s, target)
+	}
+
 	u := url.URL{Path: fmt.Sprintf("%s/%s/dependabot/alerts", s, target)}
 	query := u.Query()
 	query.Set("state", "open")
 	u.RawQuery = query.Encode()
-	return u.String()
+	return u.String(), nil
 }
 
 // ListAlerts picks the org path when org is non-empty, and the authenticated-user path otherwise.
@@ -57,7 +86,10 @@ func (c *GithubClient) ListAlerts(ctx context.Context, org string) ([]SmallDepen
 }
 
 func (c *GithubClient) ListAlertsForOrg(ctx context.Context, org string) ([]SmallDependabotAlert, error) {
-	listOrgAlertsURL := OrgScope.OpenAlertsURL(org)
+	listOrgAlertsURL, err := OrgScope.OpenAlertsURL(org)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to OpenAlertsURL")
+	}
 
 	alerts, err := NewPageFetcher[DependabotAlert](c).FetchAllPages(ctx, listOrgAlertsURL)
 	if err != nil {
@@ -84,7 +116,10 @@ func IsDependabotAlertsDisabled(err error) bool {
 // FetchAlertsForRepo fetches the open Dependabot alerts for a single "owner/repo".
 // It returns (nil, nil) when Dependabot alerts are disabled for the repository.
 func (c *GithubClient) FetchAlertsForRepo(ctx context.Context, ownerRepo string) ([]SmallDependabotAlert, error) {
-	listRepoAlertsURL := RepoScope.OpenAlertsURL(ownerRepo)
+	listRepoAlertsURL, err := RepoScope.OpenAlertsURL(ownerRepo)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to OpenAlertsURL")
+	}
 
 	alerts, err := NewPageFetcher[DependabotAlert](c).FetchAllPages(ctx, listRepoAlertsURL)
 	if IsDependabotAlertsDisabled(err) {

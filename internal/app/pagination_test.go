@@ -1,15 +1,22 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dev-hato/gh-list-dependabot-alerts-for-owner-repos/internal/app"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )
 
@@ -17,6 +24,17 @@ var errCloseBoom = errors.New("close boom")
 
 type testItem struct {
 	Number int `json:"number"`
+}
+
+// decodedCountingItems counts how many countingItem values have been decoded.
+// Only TestFetchPageDecodesNoItemsPastTheLimit uses countingItem, so the count is that test's alone.
+var decodedCountingItems atomic.Int64
+
+type countingItem struct{}
+
+func (*countingItem) UnmarshalJSON([]byte) error {
+	decodedCountingItems.Add(1)
+	return nil
 }
 
 type failingWriter struct{}
@@ -49,6 +67,40 @@ func nextPage2Handler(t *testing.T, body string) http.HandlerFunc {
 	}
 }
 
+// twoPageHandler returns an http.HandlerFunc serving page 1 (linking to page 2) and page 2, counting requests in calls.
+// page2Link is page 2's Link header; empty means page 2 is the last page.
+func twoPageHandler(t *testing.T, calls *int, page2Link string) http.HandlerFunc {
+	t.Helper()
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		*calls++
+
+		if r.URL.Query().Get("page") == "2" {
+			if page2Link != "" {
+				w.Header().Set("Link", page2Link)
+			}
+
+			jsonHandler(t, http.StatusOK, `[{"number":2}]`)(w, r)
+			return
+		}
+
+		nextPage2Handler(t, `[{"number":1}]`)(w, r)
+	}
+}
+
+// fetchAllPagesWithinGuardTimeout runs FetchAllPages against client under a 30-second deadline.
+// The pagination-guard tests use it so that a regressed guard fails fast instead of hanging.
+func fetchAllPagesWithinGuardTimeout(t *testing.T, client *app.GithubClient) error {
+	t.Helper()
+
+	// Without the deadline, FetchAllPages would paginate forever if a guard regressed.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	_, err := app.NewPageFetcher[testItem](client).FetchAllPages(ctx, "orgs/foo/dependabot/alerts")
+	return err
+}
+
 func TestFetchPage(t *testing.T) {
 	tests := map[string]struct {
 		newClient       func(t *testing.T) *app.GithubClient
@@ -65,8 +117,8 @@ func TestFetchPage(t *testing.T) {
 					t.Errorf("items mismatch (-want +got):\n%s", diff)
 				}
 
-				if p.NextPath != "orgs/foo/dependabot/alerts" {
-					t.Errorf("nextPath = %q, want unchanged path", p.NextPath)
+				if p.NextPath != "" {
+					t.Errorf("nextPath = %q, want empty", p.NextPath)
 				}
 			},
 		},
@@ -90,7 +142,7 @@ func TestFetchPage(t *testing.T) {
 			newClient: func(t *testing.T) *app.GithubClient {
 				return newTestGithubClient(t, jsonHandler(t, http.StatusOK, `not json`))
 			},
-			wantErrContains: "Failed to Decode",
+			wantErrContains: "Failed to decodeItems",
 		},
 		"body close error surfaces even on an otherwise successful decode": {
 			newClient: func(t *testing.T) *app.GithubClient {
@@ -104,6 +156,7 @@ func TestFetchPage(t *testing.T) {
 						}, nil
 					})),
 					Limiter: noWaitLimiter(),
+					Budget:  fullBudget(),
 				}
 			},
 			wantErrIs: errCloseBoom,
@@ -116,6 +169,7 @@ func TestFetchPage(t *testing.T) {
 					})),
 					// A zero-burst limiter can never admit a single request, so Wait fails immediately.
 					Limiter: rate.NewLimiter(0, 0),
+					Budget:  fullBudget(),
 				}
 			},
 			wantErrContains: "Failed to Limiter.Wait",
@@ -150,16 +204,7 @@ func TestFetchAllPages(t *testing.T) {
 	t.Run("aggregates items across pages", func(t *testing.T) {
 		var calls int
 
-		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls++
-
-			if r.URL.Query().Get("page") == "2" {
-				jsonHandler(t, http.StatusOK, `[{"number":2}]`)(w, r)
-				return
-			}
-
-			nextPage2Handler(t, `[{"number":1}]`)(w, r)
-		}))
+		client := newTestGithubClient(t, twoPageHandler(t, &calls, ""))
 
 		got, err := app.NewPageFetcher[testItem](client).FetchAllPages(context.Background(), "orgs/foo/dependabot/alerts")
 		if err != nil {
@@ -183,4 +228,246 @@ func TestFetchAllPages(t *testing.T) {
 			t.Errorf("fetchAllPages() error = %v, want it to mention fetchPage", err)
 		}
 	})
+
+	t.Run("a next link back to an earlier page is an error", func(t *testing.T) {
+		var calls int
+
+		client := newTestGithubClient(
+			t,
+			twoPageHandler(t, &calls, `<https://api.github.com/orgs/foo/dependabot/alerts>; rel="next"`),
+		)
+
+		err := fetchAllPagesWithinGuardTimeout(t, client)
+		if err == nil || !strings.Contains(err.Error(), "Pagination loops back") {
+			t.Errorf("fetchAllPages() error = %v, want it to mention the loop", err)
+		}
+
+		if calls != 2 {
+			t.Errorf("server was called %d times, want 2", calls)
+		}
+	})
+}
+
+func TestFetchAllPagesNextLinkGuards(t *testing.T) {
+	tests := map[string]struct {
+		// nextLink returns the next link the server sends on its call-th call.
+		nextLink        func(call int) string
+		wantErrContains string
+		wantCalls       int
+	}{
+		"a next link to the current page is an error": {
+			nextLink: func(int) string {
+				return `<https://api.github.com/orgs/foo/dependabot/alerts>; rel="next"`
+			},
+			wantErrContains: "Pagination loops back",
+			wantCalls:       1,
+		},
+		"endless new next links stop at MaxPages": {
+			nextLink: func(call int) string {
+				return fmt.Sprintf(`<https://api.github.com/orgs/foo/dependabot/alerts?page=%d>; rel="next"`, call+1)
+			},
+			wantErrContains: "Pagination exceeds",
+			wantCalls:       app.MaxPages,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var calls int
+
+			client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.Header().Set("Link", tt.nextLink(calls))
+				jsonHandler(t, http.StatusOK, `[]`)(w, r)
+			}))
+
+			err := fetchAllPagesWithinGuardTimeout(t, client)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
+				t.Errorf("fetchAllPages() error = %v, want it to mention %q", err, tt.wantErrContains)
+			}
+
+			if calls != tt.wantCalls {
+				t.Errorf("server was called %d times, want %d", calls, tt.wantCalls)
+			}
+		})
+	}
+}
+
+func TestFetchAllPagesTotalLimits(t *testing.T) {
+	t.Run("pages past the total byte limit are an error", func(t *testing.T) {
+		var calls int
+
+		client := newTestGithubClient(t, twoPageHandler(t, &calls, ""))
+		// Page 1's body `[{"number":1}]` fits, leaving too little for page 2's.
+		client.Budget = app.NewBudget(app.BudgetLimits{
+			Bytes: int64(len(`[{"number":1}]`) + 1),
+			Items: app.MaxTotalItems,
+		})
+
+		_, err := app.NewPageFetcher[testItem](client).FetchAllPages(t.Context(), "orgs/foo/dependabot/alerts")
+		if err == nil || !strings.Contains(err.Error(), "byte limit") {
+			t.Errorf("fetchAllPages() error = %v, want it to mention the byte limit", err)
+		}
+
+		if calls != 2 {
+			t.Errorf("server was called %d times, want 2", calls)
+		}
+	})
+
+	t.Run("pages past the total item limit are an error", func(t *testing.T) {
+		var calls int
+
+		client := newTestGithubClient(t, twoPageHandler(t, &calls, ""))
+		// Page 1's single item uses up the whole limit, so page 2's item is one too many.
+		client.Budget = app.NewBudget(app.BudgetLimits{Bytes: app.MaxTotalBytes, Items: 1})
+
+		_, err := app.NewPageFetcher[testItem](client).FetchAllPages(t.Context(), "orgs/foo/dependabot/alerts")
+		if err == nil || !strings.Contains(err.Error(), "Pagination exceeds the item limit") {
+			t.Errorf("fetchAllPages() error = %v, want it to mention the item limit", err)
+		}
+
+		if calls != 2 {
+			t.Errorf("server was called %d times, want 2", calls)
+		}
+	})
+
+	t.Run("slow parallel pages within the total byte limit succeed", func(t *testing.T) {
+		const fetches = 2
+
+		// Every response sends its headers, then holds its body back until all of them have,
+		// so every fetch is mid-read at the same time.
+		var arrived sync.WaitGroup
+		arrived.Add(fetches)
+
+		client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+
+			arrived.Done()
+			arrived.Wait()
+			time.Sleep(100 * time.Millisecond)
+
+			if _, err := fmt.Fprint(w, `[{"number":1}]`); err != nil {
+				t.Error(err)
+			}
+		}))
+		// Room for one full page, which is far more than all the small bodies together.
+		client.Budget = app.NewBudget(app.BudgetLimits{Bytes: app.MaxPageBytes, Items: app.MaxTotalItems})
+
+		var g errgroup.Group
+
+		for i := range fetches {
+			g.Go(func() error {
+				_, err := app.NewPageFetcher[testItem](client).FetchAllPages(
+					t.Context(),
+					fmt.Sprintf("repos/alice/%d/dependabot/alerts", i),
+				)
+
+				return err
+			})
+		}
+
+		if err := g.Wait(); err != nil {
+			t.Errorf("parallel fetchAllPages() error = %v, want nil", err)
+		}
+	})
+
+	t.Run("separate fetchers on one client share the limit", func(t *testing.T) {
+		client := newTestGithubClient(t, jsonHandler(t, http.StatusOK, `[{"number":1}]`))
+		client.Budget = app.NewBudget(app.BudgetLimits{Bytes: app.MaxTotalBytes, Items: 1})
+
+		_, err := app.NewPageFetcher[testItem](client).FetchAllPages(
+			t.Context(),
+			"repos/alice/a/dependabot/alerts",
+		)
+		if err != nil {
+			t.Fatalf("first fetchAllPages() error = %v, want nil", err)
+		}
+
+		_, err = app.NewPageFetcher[testItem](client).FetchAllPages(
+			t.Context(),
+			"repos/alice/b/dependabot/alerts",
+		)
+		if err == nil || !strings.Contains(err.Error(), "Pagination exceeds the item limit") {
+			t.Errorf("second fetchAllPages() error = %v, want it to mention the item limit", err)
+		}
+	})
+}
+
+func TestFetchPageKeepsResponseValuesOutOfTheError(t *testing.T) {
+	t.Parallel()
+
+	// Digits only, so the marker can also make up a JSON number.
+	const marker = "123456789012345678901234567890"
+
+	tests := map[string]string{
+		"JSON string body":                        `"` + marker + `"`,
+		"JSON object body":                        `{"token":"` + marker + `"}`,
+		"JSON number body out of float64's range": marker + "e99999",
+		"item number out of int's range":          `[{"number":` + marker + `}]`,
+		"item timestamp that doesn't parse":       `[{"created_at":"` + marker + `"}]`,
+	}
+
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newTestGithubClient(t, jsonHandler(t, http.StatusOK, body))
+
+			_, err := app.NewPageFetcher[app.DependabotAlert](client).FetchPage(t.Context(), "orgs/foo/dependabot/alerts")
+			if err == nil {
+				t.Fatal("FetchPage() error = nil, want an error for a body that doesn't decode")
+			}
+
+			// FatalReporter prints errors with %+v, so check that form too.
+			if got := fmt.Sprintf("%+v", err); strings.Contains(got, marker) {
+				t.Errorf("FetchPage() error = %q, want it to leave out the response's values", got)
+			}
+		})
+	}
+}
+
+func TestFetchPageDecodesNoItemsPastTheLimit(t *testing.T) {
+	client := newTestGithubClient(t, jsonHandler(t, http.StatusOK, `[{"number":1},{"number":2},{"number":3}]`))
+	client.Budget = app.NewBudget(app.BudgetLimits{Bytes: app.MaxTotalBytes, Items: 1})
+
+	_, err := app.NewPageFetcher[countingItem](client).FetchPage(t.Context(), "orgs/foo/dependabot/alerts")
+	if err == nil || !strings.Contains(err.Error(), "Pagination exceeds the item limit") {
+		t.Errorf("FetchPage() error = %v, want it to mention the item limit", err)
+	}
+
+	if got := decodedCountingItems.Load(); got != 1 {
+		t.Errorf("FetchPage() decoded %d items, want only the 1 the limit allows", got)
+	}
+}
+
+func TestFetchPageRejectsOversizedBody(t *testing.T) {
+	client := newTestGithubClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte("[")); err != nil {
+			t.Error(err)
+			return
+		}
+
+		chunk := bytes.Repeat([]byte(`{"number":1},`), 1<<16)
+
+		for written := 0; written <= app.MaxPageBytes; written += len(chunk) {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+
+		if _, err := w.Write([]byte(`{"number":1}]`)); err != nil {
+			return
+		}
+	}))
+	// The body holds far more items than MaxTotalItems, so lift the item limit to reach the byte limit.
+	client.Budget = app.NewBudget(app.BudgetLimits{Bytes: app.MaxTotalBytes, Items: math.MaxInt64})
+
+	_, err := app.NewPageFetcher[testItem](client).FetchPage(t.Context(), "orgs/foo/dependabot/alerts")
+	if err == nil || !strings.Contains(err.Error(), "-byte limit") {
+		t.Errorf("FetchPage() error = %v, want it to mention the per-page byte limit", err)
+	}
 }

@@ -7,22 +7,34 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/cockroachdb/errors"
 	"golang.org/x/time/rate"
 )
 
+const (
+	// MaxPages caps how many pages FetchAllPages follows, so a response can't paginate forever.
+	MaxPages = 10000
+	// MaxPageBytes caps how much of one response body FetchPage decodes, so a response can't exhaust memory.
+	MaxPageBytes = 64 << 20
+)
+
+// Page is one decoded page of items.
+// NextPath is the next page's path, or "" when the response linked no next page.
 type Page[T any] struct {
 	Items    []T
 	NextPath string
 }
 
-// GithubClient bundles the REST client with the rate limiter that throttles it.
-// Every fetch needs both together, so they travel as one value instead of two.
+// GithubClient bundles the REST client with the rate limiter that throttles it
+// and the budget that caps how much of its responses get decoded.
+// Every fetch needs all three together, so they travel as one value.
 type GithubClient struct {
 	Rest    *api.RESTClient
 	Limiter *rate.Limiter
+	Budget  *Budget
 }
 
 // PageFetcher fetches paginated GitHub API responses whose items decode into T.
@@ -38,8 +50,6 @@ func NewPageFetcher[T any](client *GithubClient) *PageFetcher[T] {
 }
 
 func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T], err error) {
-	p.NextPath = path
-
 	if err = f.Client.Limiter.Wait(ctx); err != nil {
 		return p, errors.Wrap(err, "Failed to Limiter.Wait")
 	}
@@ -58,19 +68,111 @@ func (f *PageFetcher[T]) FetchPage(ctx context.Context, path string) (p Page[T],
 		}
 	}(httpResponse.Body)
 
-	if err := json.NewDecoder(httpResponse.Body).Decode(&p.Items); err != nil {
-		return p, errors.Wrap(err, "Failed to Decode")
+	// A body over MaxPageBytes, or over what's left of the shared budget, is cut short,
+	// so it fails to decode instead of being read in full.
+	body := &io.LimitedReader{R: BudgetReader{R: httpResponse.Body, Budget: f.Client.Budget}, N: MaxPageBytes}
+
+	if p.Items, err = f.decodeItems(json.NewDecoder(body)); err != nil {
+		if body.N == 0 {
+			return p, errors.Wrapf(err, "Failed to decodeItems within the %d-byte limit", MaxPageBytes)
+		}
+
+		return p, errors.Wrap(err, "Failed to decodeItems")
 	}
 
-	p.NextPath = LinkHeader(httpResponse.Header.Get("Link")).NextPath(path)
+	nextPath, err := LinkHeader(httpResponse.Header.Get("Link")).NextPath()
+	if err != nil {
+		return p, errors.Wrap(err, "Failed to NextPath")
+	}
+
+	p.NextPath = nextPath
 
 	return p, nil
+}
+
+// decodeItems decodes a JSON array one item at a time,
+// spending each item from the budget before decoding it,
+// so items past the limit are never decoded or kept.
+func (f *PageFetcher[T]) decodeItems(dec *json.Decoder) ([]T, error) {
+	// Without UseNumber, Token parses a number body as float64,
+	// and one out of float64's range fails with an error quoting the whole number.
+	dec.UseNumber()
+
+	start, err := dec.Token()
+	if err != nil {
+		return nil, errors.Wrap(decodeError(err), "Failed to Token")
+	}
+
+	if start != json.Delim('[') {
+		// The token comes from the response, so keep its value out of the error, which ends up on stderr.
+		return nil, errors.New("Response body is not a JSON array")
+	}
+
+	var items []T
+
+	for dec.More() {
+		if !f.Client.Budget.SpendItems(1) {
+			return nil, errors.New("Pagination exceeds the item limit")
+		}
+
+		var item T
+		if err = dec.Decode(&item); err != nil {
+			return nil, errors.Wrap(decodeError(err), "Failed to Decode")
+		}
+
+		items = append(items, item)
+	}
+
+	if _, err = dec.Token(); err != nil {
+		return nil, errors.Wrap(decodeError(err), "Failed to Token")
+	}
+
+	return items, nil
+}
+
+// decodeError keeps the response's values out of a decode error, since the error ends up on stderr.
+// encoding/json quotes numbers that don't fit their field,
+// and UnmarshalJSON methods like go-github's Timestamp quote whatever failed to parse.
+func decodeError(err error) error {
+	var (
+		typeErr   *json.UnmarshalTypeError
+		syntaxErr *json.SyntaxError
+	)
+
+	switch {
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF),
+		errors.Is(err, ErrByteBudgetExceeded), errors.Is(err, errBodyRead):
+		// These come from reading the body, not from its content, so they quote nothing from it.
+		return err
+	case errors.As(err, &typeErr):
+		// Value is "number 123" for numbers, so keep only its first word, the JSON kind.
+		kind, _, _ := strings.Cut(typeErr.Value, " ")
+		return errors.Newf("JSON %s doesn't fit Go type %s at field %q", kind, typeErr.Type, typeErr.Field)
+	case errors.As(err, &syntaxErr):
+		return errors.Newf("Invalid JSON at byte %d", syntaxErr.Offset)
+	default:
+		return errors.New("A value in the response failed to decode")
+	}
 }
 
 func (f *PageFetcher[T]) FetchAllPages(ctx context.Context, path string) ([]T, error) {
 	var allItems []T
 
-	for {
+	// The next links come from responses, so guard against a loop back to an earlier page as well as endless new ones.
+	visited := make(map[string]struct{})
+
+	// Count fetched pages rather than len(visited), so the cap still holds if the loop check ever misses a cycle.
+	for pages := 0; ; pages++ {
+		if _, ok := visited[path]; ok {
+			return nil, errors.Newf("Pagination loops back to %q", path)
+		}
+
+		if pages == MaxPages {
+			return nil, errors.Newf("Pagination exceeds %d pages", MaxPages)
+		}
+
+		visited[path] = struct{}{}
+
 		p, err := f.FetchPage(ctx, path)
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to FetchPage")
@@ -78,7 +180,7 @@ func (f *PageFetcher[T]) FetchAllPages(ctx context.Context, path string) ([]T, e
 
 		allItems = append(allItems, p.Items...)
 
-		if path == p.NextPath {
+		if p.NextPath == "" {
 			return allItems, nil
 		}
 
