@@ -5,7 +5,7 @@ version: 'v0.0.3'
 workflows:
     '.github/workflows/add-to-task-list.yml':
         - 'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
-        - 'dev-hato/actions-add-to-projects@68fe0371ddf7f3192888f4a166bc13f528ae49e5'
+        - 'dev-hato/actions-add-to-projects@8c1169d928e375602b9f6f5061fe490f21672ffb'
     '.github/workflows/format-json-yml.yml':
         - 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
         - 'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
@@ -90,9 +90,9 @@ dependencies:
         uses:
             - 'actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32'
             - 'actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c'
-    'dev-hato/actions-add-to-projects@68fe0371ddf7f3192888f4a166bc13f528ae49e5':
-        ref: 'v1.0.11'
-        commit: 'sha1-68fe0371ddf7f3192888f4a166bc13f528ae49e5'
+    'dev-hato/actions-add-to-projects@8c1169d928e375602b9f6f5061fe490f21672ffb':
+        ref: 'v1.0.12'
+        commit: 'sha1-8c1169d928e375602b9f6f5061fe490f21672ffb'
         owner_id: 68012105
         repo_id: 526394375
         uses:
