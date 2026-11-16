@@ -1,9 +1,7 @@
 name: test
 on:
   pull_request:
-  push:
-    branches:
-      - main
+  merge_group:
 permissions: {}
 jobs:
   # jscpd:ignore-start
