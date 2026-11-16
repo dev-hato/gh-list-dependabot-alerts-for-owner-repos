@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
 jobs:
+  # jscpd:ignore-start
   update-actions-lock:
     timeout-minutes: 10
     runs-on: ubuntu-latest
@@ -21,6 +22,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           persist-credentials: false
+      # jscpd:ignore-end
       - name: Install actions-lock
         if: github.event_name != 'pull_request' || github.event.action != 'closed'
         run: gh extension install github/gh-actions-lock --pin "${GH_ACTIONS_LOCK_VERSION}"
