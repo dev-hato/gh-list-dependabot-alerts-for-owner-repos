@@ -13,6 +13,7 @@ jobs:
   ghalint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # jscpd:ignore-start
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -21,6 +22,7 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: flatt-security/setup-takumi-guard-golang@02545d3425218766aac4dca114dcc3f6eaa0df4a # v1.3.0
+      # jscpd:ignore-end
       - name: Lint workflows
         env:
           GITHUB_TOKEN: ${{ github.token }}
