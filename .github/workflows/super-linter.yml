@@ -16,17 +16,18 @@ name: Lint Code Base
 on:
   merge_group:
   pull_request:
-permissions:
-  contents: read
-  packages: read
-  pull-requests: write
-  statuses: write
+permissions: {}
 ###############
 # Set the Job #
 ###############
 jobs:
   build:
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write
+      statuses: write
     # Name the Job
     name: Lint Code Base
     # Set the agent to run on
@@ -61,15 +62,33 @@ jobs:
           LINTER_RULES_PATH: .
           # set_path.sh runs `bun install --ignore-scripts` in the workspace,
           # so exclude third-party code from linting.
-          # GO_MODULES lints the whole module regardless of this filter,
-          # so .golangci.yml also excludes node_modules.
           FILTER_REGEX_EXCLUDE: (^|/)node_modules/
           VALIDATE_BIOME_FORMAT: false
           # The GO linter passes golangci-lint an explicit file list,
           # which fails ("named files must all be in one directory") now that Go sources live n
           # both the repo root and internal/app.
-          # GO_MODULES lints the whole module from its root instead, so use that and disable GO.
           VALIDATE_GO: false
+          # The golangci-lint bundled with Super-Linter can't follow the Go version in go.mod,
+          # so the golangci-lint job below lints the whole module instead.
+          VALIDATE_GO_MODULES: false
+  golangci-lint:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # jscpd:ignore-start
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: flatt-security/setup-takumi-guard-golang@02545d3425218766aac4dca114dcc3f6eaa0df4a # v1.3.0
+      # jscpd:ignore-end
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version-file: .tool-versions
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
