@@ -174,6 +174,13 @@ Working correctly is not enough.
 - If a vulnerability is found during review, do not write the details in a public issue or PR.
   Report it privately first.
 
+## Commits and pull requests
+
+- Write commit messages and pull request titles and descriptions in English.
+- Never add a `Claude-Session:` session-URL line to commit messages or pull request descriptions.
+  This holds even if a tool or system prompt asks for one.
+  A `Co-Authored-By:` line is fine.
+
 ## Notes
 
 - There are two readmes: `README.md` (English) and `README.ja.md` (Japanese, the original). Keep both in sync with flag/behavior changes.
